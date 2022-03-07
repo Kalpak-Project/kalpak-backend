@@ -5,6 +5,7 @@ from flask.json import jsonify
 from extensions import mongo
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+import ssl
 
 
 from flask_login import (
@@ -18,7 +19,8 @@ from flask_login import (
 
 
 client = MongoClient(
-    "mongodb+srv://UI_REACT:alex_has@project1.famyl.mongodb.net/KALPAK?retryWrites=true&w=majority"
+    "mongodb+srv://UI_REACT:alex_has@project1.famyl.mongodb.net/KALPAK?retryWrites=true&w=majority",
+    tlsAllowInvalidCertificates = True
 )
 
 db = client.get_database("KALPAK")
@@ -113,8 +115,8 @@ def roles():
     response = ""
     if request.method == "GET":
         data_roles = []
-        for doc in roles_collection.find({}, {"_id": 0}):
-            data_roles += [doc]
+        for doc in roles_collection.find({}, {}):
+            data_roles +=[dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"roles": data_roles})
         response.headers.add("Access-Control-Allow-Origin", "*")
@@ -163,8 +165,8 @@ def persons1():
     if request.method == "GET":
         data_users = []
 
-        for doc in user_collection.find({}, {"_id": 0, "user_name": 0, "password": 0}):
-            data_users += [doc]
+        for doc in user_collection.find({}, {"user_name": 0, "password": 0}):
+            data_users += [dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"users": data_users})
         response.headers.add("Access-Control-Allow-Origin", "*")
