@@ -1,3 +1,4 @@
+from ast import Delete
 from flask import Flask, request
 import flask
 import json
@@ -58,6 +59,7 @@ def get_current_user():
 def addUser():
     username = request.json.get("username", None)
     found = user_collection.find_one({"user_name": username})
+    
     if found:
         return jsonify(
             {"status": 401, "reason": "Username already exist. Try another user name."}
@@ -66,12 +68,18 @@ def addUser():
         newUser = request.data
         userStr = newUser.decode("utf-8")
         newUserJson = json.loads(userStr)
+        print(newUserJson)
         usr = {}
-        for field in newUserJson:
-            usr[field["key"]] = field["value"]
+        hashed_password = generate_password_hash(newUserJson['password'])
+        print(hashed_password)
+        json.dump(newUserJson['password'])
+        print("after delete: ", newUserJson)
+        # for field in newUserJson:
+        #     usr[field["key"]] = field["value"]
 
-        print(usr)
-        user_collection.insert_one(usr)
+        # print(usr)
+        # user_collection.insert_one(usr)
+        return jsonify({"ok": "nice"})
 
 
 @login_manager.user_loader
