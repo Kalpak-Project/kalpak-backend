@@ -57,7 +57,7 @@ def get_current_user():
 
 @app.route("/api/register", methods=["POST"])
 def addUser():
-    username = request.json.get("username", None)
+    username = request.json.get("user_name", None)
     found = user_collection.find_one({"user_name": username})
     
     if found:
@@ -68,18 +68,20 @@ def addUser():
         newUser = request.data
         userStr = newUser.decode("utf-8")
         newUserJson = json.loads(userStr)
-        print(newUserJson)
+        
         usr = {}
         hashed_password = generate_password_hash(newUserJson['password'])
-        print(hashed_password)
-        json.dump(newUserJson['password'])
-        print("after delete: ", newUserJson)
-        # for field in newUserJson:
-        #     usr[field["key"]] = field["value"]
+        
+        # Replacing the original password with the hashed password
+        del newUserJson['password']
+        newUserJson['password'] = hashed_password
+        
+        for field in newUserJson:
+            usr[field["key"]] = field["value"]
 
-        # print(usr)
-        # user_collection.insert_one(usr)
-        return jsonify({"ok": "nice"})
+        print(usr)
+        user_collection.insert_one(usr)
+        return jsonify({"success": True})
 
 
 @login_manager.user_loader
@@ -89,8 +91,9 @@ def load_user(id_):
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    username = request.json.get("username", None)
+    username = request.json.get("user_name", None)
     password = request.json.get("password", None)
+    print(request.data)
     found = user_collection.find_one({"user_name": username}, {"_id": 0})
     print("found:", found)
     if found:
@@ -106,16 +109,23 @@ def login():
         return jsonify({"status": 402, "reason": "username doesn't exist"})
 
 
-@app.route("/users", methods=["GET", "POST"])
-def users():
-    data_users = []
-    for doc in user_collection.find({}, {"_id": 0}):
-        data_users += [doc]
+# @app.route("/api/logout", methods=["GET, POST"])
+# def logout():
+#     logout_user()
+#     return jsonify({"success": "you logged out"})
 
-    response = flask.jsonify({"users": data_users})
-    response.headers.add("Access-Control-Allow-Origin", "*")
 
-    return response
+
+# @app.route("/users", methods=["GET", "POST"])
+# def users():
+#     data_users = []
+#     for doc in user_collection.find({}, {"_id": 0}):
+#         data_users += [doc]
+
+#     response = flask.jsonify({"users": data_users})
+#     response.headers.add("Access-Control-Allow-Origin", "*")
+
+#     return response
 
 
 @app.route("/roles", methods=["GET", "POST"])
@@ -143,37 +153,37 @@ def roles():
     return response
 
 
-@app.route("/persons", methods=["GET", "POST"])
-def persons():
-    response = ""
-    if request.method == "GET":
-        data_persons = []
+# @app.route("/persons", methods=["GET", "POST"])
+# def persons():
+#     response = ""
+#     if request.method == "GET":
+#         data_persons = []
 
-        for doc in persons_collection.find({}, {"_id": 0}):
-            data_persons += [doc]
+#         for doc in persons_collection.find({}, {"_id": 0}):
+#             data_persons += [doc]
 
-        response = flask.jsonify({"persons": data_persons})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-    else:
-        newPerson = request.data
-        personStr = newPerson.decode("utf-8")
-        newPersonJson = json.loads(personStr)
-        person = {}
-        for field in newPersonJson:
-            person[field["key"]] = field["value"]
+#         response = flask.jsonify({"persons": data_persons})
+#         response.headers.add("Access-Control-Allow-Origin", "*")
+#     else:
+#         newPerson = request.data
+#         personStr = newPerson.decode("utf-8")
+#         newPersonJson = json.loads(personStr)
+#         person = {}
+#         for field in newPersonJson:
+#             person[field["key"]] = field["value"]
 
-        print(person)
-        persons_collection.insert_one(person)
-    return response
+#         print(person)
+#         persons_collection.insert_one(person)
+#     return response
 
 
-@app.route("/persons1", methods=["GET", "POST"])
-def persons1():
+@app.route("/users", methods=["GET", "POST"])
+def users():
     response = ""
     if request.method == "GET":
         data_users = []
 
-        for doc in user_collection.find({}, {"user_name": 0, "password": 0}):
+        for doc in user_collection.find({}, {"password": 0}):
             data_users += [dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"users": data_users})
@@ -182,7 +192,8 @@ def persons1():
         newUser = request.data
         userStr = newUser.decode("utf-8")
         newUserJson = json.loads(userStr)
-        user = {}
+        default_password = generate_password_hash("password123")
+        user = {"password": default_password}
         for field in newUserJson:
             user[field["key"]] = field["value"]
 
