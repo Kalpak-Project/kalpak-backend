@@ -52,35 +52,40 @@ class User(UserMixin):
 @app.route("/api/current_user", methods=["GET"])
 @login_required
 def get_current_user():
+
     return jsonify({"user": current_user.get_id()})
 
 
 @app.route("/api/register", methods=["POST"])
-def addUser():
-    username = request.json.get("user_name", None)
+def register():
+
+    # need to fix the check if user already exists in the table
+    # check if user already exists in the table
+
+    newUser = request.data
+    userStr = newUser.decode("utf-8")
+    newUserJson = json.loads(userStr)
+
+    username = newUserJson["user_name"]
     found = user_collection.find_one({"user_name": username})
     
     if found:
         return jsonify(
-            {"status": 401, "reason": "Username already exist. Try another user name."}
-        )
+            {"status": 401, "reason": "Username already exist. Try another user name."})
     else:
-        newUser = request.data
-        userStr = newUser.decode("utf-8")
-        newUserJson = json.loads(userStr)
-        
         usr = {}
         hashed_password = generate_password_hash(newUserJson['password'])
-        
+
         # Replacing the original password with the hashed password
         del newUserJson['password']
         newUserJson['password'] = hashed_password
-        
-        for field in newUserJson:
-            usr[field["key"]] = field["value"]
+    
+        for key, value in newUserJson.items():
+            usr[key] = value
 
         print(usr)
         user_collection.insert_one(usr)
+        login_user(User(newUserJson["user_name"]))
         return jsonify({"success": True})
 
 
@@ -109,26 +114,14 @@ def login():
         return jsonify({"status": 402, "reason": "username doesn't exist"})
 
 
-# @app.route("/api/logout", methods=["GET, POST"])
-# def logout():
-#     logout_user()
-#     return jsonify({"success": "you logged out"})
+@app.route("/api/logout", methods=["POST"])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({"success": "you logged out"})
 
 
-
-# @app.route("/users", methods=["GET", "POST"])
-# def users():
-#     data_users = []
-#     for doc in user_collection.find({}, {"_id": 0}):
-#         data_users += [doc]
-
-#     response = flask.jsonify({"users": data_users})
-#     response.headers.add("Access-Control-Allow-Origin", "*")
-
-#     return response
-
-
-@app.route("/roles", methods=["GET", "POST"])
+@app.route("/api/roles", methods=["GET", "POST"])
 def roles():
     response = ""
     if request.method == "GET":
@@ -153,31 +146,7 @@ def roles():
     return response
 
 
-# @app.route("/persons", methods=["GET", "POST"])
-# def persons():
-#     response = ""
-#     if request.method == "GET":
-#         data_persons = []
-
-#         for doc in persons_collection.find({}, {"_id": 0}):
-#             data_persons += [doc]
-
-#         response = flask.jsonify({"persons": data_persons})
-#         response.headers.add("Access-Control-Allow-Origin", "*")
-#     else:
-#         newPerson = request.data
-#         personStr = newPerson.decode("utf-8")
-#         newPersonJson = json.loads(personStr)
-#         person = {}
-#         for field in newPersonJson:
-#             person[field["key"]] = field["value"]
-
-#         print(person)
-#         persons_collection.insert_one(person)
-#     return response
-
-
-@app.route("/users", methods=["GET", "POST"])
+@app.route("/api/users", methods=["GET", "POST"])
 def users():
     response = ""
     if request.method == "GET":
@@ -189,6 +158,16 @@ def users():
         response = flask.jsonify({"users": data_users})
         response.headers.add("Access-Control-Allow-Origin", "*")
     else:
+        
+        # need to fix the check if user already exists in the table
+        #  user = request.data
+        # found = user_collection.find_one({"user_name": user[0].user_name}, {"_id": 0})
+        
+        # if found:
+        #     return jsonify(
+        #         {"status": 401, "reason": "Username already exist. Try another user name."})
+        # else:
+
         newUser = request.data
         userStr = newUser.decode("utf-8")
         newUserJson = json.loads(userStr)
@@ -199,7 +178,9 @@ def users():
 
         print(user)
         user_collection.insert_one(user)
+    
     return response
+
 
 if __name__ == "__main__":
     app.run(debug=True)
