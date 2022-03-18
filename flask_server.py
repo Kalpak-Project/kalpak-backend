@@ -32,6 +32,9 @@ roles_collection = db.Roles
 persons_collection = db.Persons
 # persons_docs = persons_collection.find({})
 
+manning_collection = db.Manning
+# manning_docs = manning_collection.find({})
+
 user_collection = db.Users
 users_docs = user_collection.find({})
 
@@ -120,6 +123,33 @@ def logout():
     logout_user()
     return jsonify({"success": "you logged out"})
 
+#manning
+
+@app.route("/api/manning", methods=["GET", "POST"])
+def manning():
+    response = ""
+    if request.method == "GET":
+        data_manning = []
+        for doc in manning_collection.find({}, {}):
+            data_manning +=[dict(key = str(doc.pop("_id")),**doc)]
+
+        response = flask.jsonify({"manning": data_manning})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+
+    else:
+        newManning = request.data
+        manningStr = newManning.decode("utf-8")
+        newManningJson = json.loads(manningStr)
+        manning = {}
+        for field in newManningJson:
+            manning[field["key"]] = field["value"]
+
+        print(manning)
+        manning_collection.insert_one(manning)
+
+    return response
+
+#manning
 
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
