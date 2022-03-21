@@ -1,4 +1,5 @@
 from ast import Delete
+from urllib import response
 from flask import Flask, request
 import flask
 import json
@@ -6,6 +7,7 @@ from flask.json import jsonify
 from extensions import mongo
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+from bson.objectid import ObjectId
 import ssl
 
 
@@ -149,7 +151,14 @@ def manning():
 
     return response
 
-#manning
+#role<key>
+@app.route("/api/roles/<key>", methods=["GET", "POST"])
+def role(key):
+    response = ""
+    if request.method == "GET":
+        role_=roles_collection.find_one({"_id":ObjectId(key)})
+        response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))
+    return response
 
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
@@ -175,6 +184,10 @@ def roles():
 
     return response
 
+#smile
+@app.route("/api/users/<key>/smile", methods=["GET", "POST"])
+def smile():
+    return flask.jsonify({"smile":True})
 
 @app.route("/api/users", methods=["GET", "POST"])
 def users():
