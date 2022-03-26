@@ -150,6 +150,7 @@ def manning():
         manning_collection.insert_one(manning)
 
     return response
+    
 
 #role<key>
 @app.route("/api/roles/<key>", methods=["GET", "POST"])
@@ -188,6 +189,17 @@ def roles():
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
 def smile():
     return flask.jsonify({"smile":True})
+
+
+#user<key>
+@app.route("/api/users/<key>", methods=["GET", "POST"])
+def user(key):
+    response = ""
+    if request.method == "GET":
+        user_=user_collection.find_one({"_id":ObjectId(key)})
+        response = flask.jsonify(dict(key = str(user_.pop("_id")),**user_))
+    return response
+
 
 @app.route("/api/users", methods=["GET", "POST"])
 def users():
