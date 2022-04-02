@@ -9,6 +9,7 @@ from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
 import ssl
+import datetime
 
 
 from flask_login import (
@@ -132,7 +133,7 @@ def manning():
     response = ""
     if request.method == "GET":
         data_manning = []
-        for doc in manning_collection.find({}, {}):
+        for doc in manning_collection.find({}):
             data_manning +=[dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"manning": data_manning})
@@ -187,7 +188,10 @@ def roles():
 
 #smile
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
-def smile():
+def smile(key):
+    for doc in manning_collection.find({"User ID": key}):
+        if datetime.datetime.fromisoformat(doc["Job end date"]) - datetime.timedelta(days=90) > datetime.datetime.utcnow():
+            return flask.jsonify({"smile":False})
     return flask.jsonify({"smile":True})
 
 
