@@ -58,8 +58,9 @@ class User(UserMixin):
 @app.route("/api/current_user", methods=["GET"])
 @login_required
 def get_current_user():
-
-    return jsonify({"user": current_user.get_id()})
+    obj_id = current_user.get_id()
+    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
+    return jsonify({"id": current_user.get_id(), "user": user_name })
 
 
 @app.route("/api/register", methods=["POST"])
@@ -105,13 +106,15 @@ def login():
     username = request.json.get("user_name", None)
     password = request.json.get("password", None)
     print(request.data)
-    found = user_collection.find_one({"user_name": username}, {"_id": 0})
+    found = user_collection.find_one({"user_name": username})
     print("found:", found)
     if found:
         hashPassword = found["password"]
         correct = check_password_hash(hashPassword, password)
         if correct:
-            login_user(User(username))
+            user_id = str(found["_id"])
+            print(user_id)
+            login_user(User(user_id))
             return jsonify({"success": True})
         else:
             return jsonify({"status": 401, "reason": "password error"})
@@ -190,7 +193,9 @@ def roles():
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
 def smile(key):
     for doc in manning_collection.find({"User ID": key}):
-        if datetime.datetime.fromisoformat(doc["Job end date"]) - datetime.timedelta(days=90) > datetime.datetime.utcnow():
+        date = doc["Job end date"].replace("Z", "+00:00")
+        print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
+        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) < datetime.datetime.utcnow():
             return flask.jsonify({"smile":False})
     return flask.jsonify({"smile":True})
 
