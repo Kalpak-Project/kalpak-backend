@@ -6,8 +6,10 @@ from flask.json import jsonify
 from extensions import mongo
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+from bson.objectid import ObjectId
 from werkzeug.exceptions import Unauthorized
 import ssl
+import datetime
 
 
 from flask_login import (
@@ -55,13 +57,20 @@ class User(UserMixin):
 # Checks what the user's authority is.
 # Returns true if the user is an admin, otherwise: false 
 def check_athority():
-    user = user_collection.find_one({"user_name": current_user.get_id()})
+    obj_id = current_user.get_id()
+    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
+    user = user_collection.find_one({"user_name": user_name})
+    print(user)
     return user["isAdmin"]
 
 @app.route("/api/current_user", methods=["GET"])
 @login_required
 def get_current_user():
-    return jsonify({"user": current_user.get_id(), "isAdmin": check_athority()})
+
+    obj_id = current_user.get_id()
+    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"] 
+    return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
+
 
 
 @app.route("/api/register", methods=["POST"])
@@ -107,13 +116,15 @@ def login():
     username = request.json.get("user_name", None)
     password = request.json.get("password", None)
     print(request.data)
-    found = user_collection.find_one({"user_name": username}, {"_id": 0})
+    found = user_collection.find_one({"user_name": username})
     print("found:", found)
     if found:
         hashPassword = found["password"]
         correct = check_password_hash(hashPassword, password)
         if correct:
-            login_user(User(username))
+            user_id = str(found["_id"])
+            print(user_id)
+            login_user(User(user_id))
             return jsonify({"success": True})
         else:
             return jsonify({"status": 401, "reason": "password error"})
@@ -138,7 +149,7 @@ def manning():
     response = ""
     if request.method == "GET":
         data_manning = []
-        for doc in manning_collection.find({}, {}):
+        for doc in manning_collection.find({}):
             data_manning +=[dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"manning": data_manning})
@@ -156,8 +167,16 @@ def manning():
         manning_collection.insert_one(manning)
 
     return response
+    
 
-#manning
+#role<key>
+@app.route("/api/roles/<key>", methods=["GET", "POST"])
+def role(key):
+    response = ""
+    if request.method == "GET":
+        role_=roles_collection.find_one({"_id":ObjectId(key)})
+        response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))
+    return response
 
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
@@ -184,6 +203,26 @@ def roles():
         print(role)
         roles_collection.insert_one(role)
 
+    return response
+
+#smile
+@app.route("/api/users/<key>/smile", methods=["GET", "POST"])
+def smile(key):
+    for doc in manning_collection.find({"User ID": key}):
+        date = doc["Job end date"].replace("Z", "+00:00")
+        print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
+        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) < datetime.datetime.utcnow():
+            return flask.jsonify({"smile":False})
+    return flask.jsonify({"smile":True})
+
+
+#user<key>
+@app.route("/api/users/<key>", methods=["GET", "POST"])
+def user(key):
+    response = ""
+    if request.method == "GET":
+        user_=user_collection.find_one({"_id":ObjectId(key)})
+        response = flask.jsonify(dict(key = str(user_.pop("_id")),**user_))
     return response
 
 
