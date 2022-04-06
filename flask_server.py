@@ -1,4 +1,4 @@
-from ast import Delete
+# from ast import Delete
 from flask import Flask, request
 import flask
 import json
@@ -6,6 +6,7 @@ from flask.json import jsonify
 from extensions import mongo
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import Unauthorized
 import ssl
 
 
@@ -51,12 +52,16 @@ class User(UserMixin):
     def __init__(self, id_):
         self.id = id_
 
+# Checks what the user's authority is.
+# Returns true if the user is an admin, otherwise: false 
+def check_athority():
+    user = user_collection.find_one({"user_name": current_user.get_id()})
+    return user["isAdmin"]
 
 @app.route("/api/current_user", methods=["GET"])
 @login_required
 def get_current_user():
-
-    return jsonify({"user": current_user.get_id()})
+    return jsonify({"user": current_user.get_id(), "isAdmin": check_athority()})
 
 
 @app.route("/api/register", methods=["POST"])
@@ -127,6 +132,9 @@ def logout():
 
 @app.route("/api/manning", methods=["GET", "POST"])
 def manning():
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
     response = ""
     if request.method == "GET":
         data_manning = []
@@ -154,6 +162,9 @@ def manning():
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
     response = ""
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
     if request.method == "GET":
         data_roles = []
         for doc in roles_collection.find({}, {}):
@@ -179,6 +190,9 @@ def roles():
 @app.route("/api/users", methods=["GET", "POST"])
 def users():
     response = ""
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
     if request.method == "GET":
         data_users = []
 
