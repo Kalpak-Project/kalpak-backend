@@ -1,5 +1,4 @@
-from ast import Delete
-from urllib import response
+# from ast import Delete
 from flask import Flask, request
 import flask
 import json
@@ -8,6 +7,7 @@ from extensions import mongo
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
+from werkzeug.exceptions import Unauthorized
 import ssl
 import datetime
 
@@ -54,13 +54,23 @@ class User(UserMixin):
     def __init__(self, id_):
         self.id = id_
 
+# Checks what the user's authority is.
+# Returns true if the user is an admin, otherwise: false 
+def check_athority():
+    obj_id = current_user.get_id()
+    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
+    user = user_collection.find_one({"user_name": user_name})
+    print(user)
+    return user["isAdmin"]
 
 @app.route("/api/current_user", methods=["GET"])
 @login_required
 def get_current_user():
+
     obj_id = current_user.get_id()
-    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
-    return jsonify({"id": current_user.get_id(), "user": user_name })
+    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"] 
+    return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
+
 
 
 @app.route("/api/register", methods=["POST"])
@@ -133,6 +143,9 @@ def logout():
 
 @app.route("/api/manning", methods=["GET", "POST"])
 def manning():
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
     response = ""
     if request.method == "GET":
         data_manning = []
@@ -168,6 +181,9 @@ def role(key):
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
     response = ""
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
     if request.method == "GET":
         data_roles = []
         for doc in roles_collection.find({}, {}):
@@ -213,6 +229,9 @@ def user(key):
 @app.route("/api/users", methods=["GET", "POST"])
 def users():
     response = ""
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
     if request.method == "GET":
         data_users = []
 
