@@ -38,6 +38,9 @@ persons_collection = db.Persons
 manning_collection = db.Manning
 # manning_docs = manning_collection.find({})
 
+placementMeetings_collection = db.PlacementMeetings
+# placementMeetings_docs = placementMeetings_collection.find({})
+
 user_collection = db.Users
 users_docs = user_collection.find({})
 
@@ -70,7 +73,6 @@ def get_current_user():
     obj_id = current_user.get_id()
     user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"] 
     return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
-
 
 
 @app.route("/api/register", methods=["POST"])
@@ -139,8 +141,7 @@ def logout():
     logout_user()
     return jsonify({"success": "you logged out"})
 
-#manning
-
+# manning
 @app.route("/api/manning", methods=["GET", "POST"])
 def manning():
     isAdmin = check_athority()
@@ -169,13 +170,43 @@ def manning():
     return response
     
 
+#Placement Meetings
+@app.route("/api/placementMeetings", methods=["GET", "POST"])
+def placementMeetings():
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
+    response = ""
+    if request.method == "GET":
+        data_placementMeetings = []
+
+    for doc in roles_collection.find({}):
+        val_id= doc["_id"]
+        minn_filte = {"id": val_id}
+        new_doc = doc.pop("_id")
+        str_id_role = str(new_doc)
+        doc["_id"] = str_id_role
+        smile = False
+        for man_doc in manning_collection.find(minn_filte):
+            date = man_doc["Job end date"].replace("Z", "+00:00")
+            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow():
+                smile = False
+            else:
+                smile = True
+                break
+        data_placementMeetings += [{"Role ID":doc, "Smile": smile}]
+ 
+    response = flask.jsonify({"placementMeetings": data_placementMeetings})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
+
 #role<key>
 @app.route("/api/roles/<key>", methods=["GET", "POST"])
 def role(key):
     response = ""
     if request.method == "GET":
         role_=roles_collection.find_one({"_id":ObjectId(key)})
-        response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))
+        response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))       
     return response
 
 @app.route("/api/roles", methods=["GET", "POST"])
