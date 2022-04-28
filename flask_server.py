@@ -1,4 +1,6 @@
 # from ast import Delete
+from asyncio.log import logger
+from unicodedata import name
 from flask import Flask, request
 import flask
 import json
@@ -10,7 +12,10 @@ from bson.objectid import ObjectId
 from werkzeug.exceptions import Unauthorized
 import ssl
 import datetime
+import logbook 
+import sys
 
+logger=logbook.Logger(__name__)
 
 from flask_login import (
     UserMixin,
@@ -32,8 +37,8 @@ db = client.get_database("KALPAK")
 roles_collection = db.Roles
 # roles_docs = roles_collection.find({})
 
-persons_collection = db.Persons
-# persons_docs = persons_collection.find({})
+# persons_collection = db.Persons
+# # persons_docs = persons_collection.find({})
 
 manning_collection = db.Manning
 # manning_docs = manning_collection.find({})
@@ -70,7 +75,6 @@ def get_current_user():
     obj_id = current_user.get_id()
     user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"] 
     return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
-
 
 
 @app.route("/api/register", methods=["POST"])
@@ -139,8 +143,7 @@ def logout():
     logout_user()
     return jsonify({"success": "you logged out"})
 
-#manning
-
+# manning
 @app.route("/api/manning", methods=["GET", "POST"])
 def manning():
     isAdmin = check_athority()
@@ -169,6 +172,36 @@ def manning():
     return response
     
 
+#Placement Meetings
+@app.route("/api/placementMeetings", methods=["GET", "POST"])
+def placementMeetings():
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
+    response = ""
+    if request.method == "GET":
+        data_placementMeetings = []
+
+    for doc in roles_collection.find({}):
+        new_doc = doc.pop("_id")
+        str_id_role = str(new_doc)
+        doc["_id"] = str_id_role
+        smile = False
+        minn_filte = {"Role ID": str_id_role}
+
+        for man_doc in manning_collection.find(minn_filte):
+            date = man_doc["Job end date"].replace("Z", "+00:00")
+            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
+            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
+                smile = False
+            else:
+                smile = True
+                break
+        data_placementMeetings += [{"Role":doc, "Smile": smile}]
+    response = flask.jsonify({"placementMeetings": data_placementMeetings})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
+
 #role<key>
 @app.route("/api/roles/<key>", methods=["GET", "POST"])
 def role(key):
@@ -177,6 +210,8 @@ def role(key):
         role_=roles_collection.find_one({"_id":ObjectId(key)})
         response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))
     return response
+
+
 
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
@@ -211,7 +246,7 @@ def smile(key):
     for doc in manning_collection.find({"User ID": key}):
         date = doc["Job end date"].replace("Z", "+00:00")
         print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
-        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) < datetime.datetime.utcnow():
+        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) < datetime.datetime.utcnow().astimezone():
             return flask.jsonify({"smile":False})
     return flask.jsonify({"smile":True})
 
@@ -266,4 +301,5 @@ def users():
 
 
 if __name__ == "__main__":
+    logbook.StreamHandler(sys.stdout).push_application() 
     app.run(debug=True)
