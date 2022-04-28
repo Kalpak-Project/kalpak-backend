@@ -1,4 +1,6 @@
 # from ast import Delete
+from asyncio.log import logger
+from unicodedata import name
 from flask import Flask, request
 import flask
 import json
@@ -10,7 +12,10 @@ from bson.objectid import ObjectId
 from werkzeug.exceptions import Unauthorized
 import ssl
 import datetime
+import logbook 
+import sys
 
+logger=logbook.Logger(__name__)
 
 from flask_login import (
     UserMixin,
@@ -32,14 +37,11 @@ db = client.get_database("KALPAK")
 roles_collection = db.Roles
 # roles_docs = roles_collection.find({})
 
-persons_collection = db.Persons
-# persons_docs = persons_collection.find({})
+# persons_collection = db.Persons
+# # persons_docs = persons_collection.find({})
 
 manning_collection = db.Manning
 # manning_docs = manning_collection.find({})
-
-placementMeetings_collection = db.PlacementMeetings
-# placementMeetings_docs = placementMeetings_collection.find({})
 
 user_collection = db.Users
 users_docs = user_collection.find({})
@@ -181,21 +183,21 @@ def placementMeetings():
         data_placementMeetings = []
 
     for doc in roles_collection.find({}):
-        val_id= doc["_id"]
-        minn_filte = {"id": val_id}
         new_doc = doc.pop("_id")
         str_id_role = str(new_doc)
         doc["_id"] = str_id_role
         smile = False
+        minn_filte = {"Role ID": str_id_role}
+
         for man_doc in manning_collection.find(minn_filte):
             date = man_doc["Job end date"].replace("Z", "+00:00")
-            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow():
+            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
+            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
                 smile = False
             else:
                 smile = True
                 break
-        data_placementMeetings += [{"Role ID":doc, "Smile": smile}]
- 
+        data_placementMeetings += [{"Role":doc, "Smile": smile}]
     response = flask.jsonify({"placementMeetings": data_placementMeetings})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
@@ -206,8 +208,10 @@ def role(key):
     response = ""
     if request.method == "GET":
         role_=roles_collection.find_one({"_id":ObjectId(key)})
-        response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))       
+        response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))
     return response
+
+
 
 @app.route("/api/roles", methods=["GET", "POST"])
 def roles():
@@ -242,7 +246,7 @@ def smile(key):
     for doc in manning_collection.find({"User ID": key}):
         date = doc["Job end date"].replace("Z", "+00:00")
         print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
-        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) < datetime.datetime.utcnow():
+        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) < datetime.datetime.utcnow().astimezone():
             return flask.jsonify({"smile":False})
     return flask.jsonify({"smile":True})
 
@@ -297,4 +301,5 @@ def users():
 
 
 if __name__ == "__main__":
+    logbook.StreamHandler(sys.stdout).push_application() 
     app.run(debug=True)
