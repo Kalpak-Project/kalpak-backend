@@ -171,6 +171,39 @@ def manning():
 
     return response
     
+#Staffing Form
+@app.route("/api/StaffingForm", methods=["GET", "POST"])
+def staffingForm():
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
+    response = ""
+    if request.method == "GET":
+        data_staffingForm = []
+
+    for doc in roles_collection.find({}):
+        new_doc = doc.pop("_id")
+        str_id_role = str(new_doc)
+        doc["_id"] = str_id_role
+        minn_filte = {"Role ID": str_id_role}
+        add_role = False
+
+        for man_doc in manning_collection.find(minn_filte):
+            date = man_doc["Job end date"].replace("Z", "+00:00")
+            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
+            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
+                add_role = False
+            else:
+                add_role = True
+                break
+        if not add_role:
+            data_staffingForm += [{"Role":doc}]
+
+    response = flask.jsonify({"staffingForm": data_staffingForm})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
+
+
 
 #Placement Meetings
 @app.route("/api/placementMeetings", methods=["GET", "POST"])
