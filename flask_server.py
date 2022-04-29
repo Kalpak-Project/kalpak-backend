@@ -73,8 +73,9 @@ def check_athority():
 def get_current_user():
 
     obj_id = current_user.get_id()
-    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"] 
-    return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
+    user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
+    user_role = manning_collection.find_one({"User ID": obj_id}) 
+    return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name, "userRole": user_role})
 
 
 @app.route("/api/register", methods=["POST"])
@@ -143,8 +144,45 @@ def logout():
     logout_user()
     return jsonify({"success": "you logged out"})
 
+
+# home_page, Optional future roles table
+@app.route("/api/optional_roles/<key>", methods=["GET", "POST"])
+def optional_roles(key):
+     if request.method == "GET":
+        user_ = manning_collection.find_one({"User ID":key})
+        user_end_role = user_["Job end date"]
+        user_end_role = user_end_role.replace("Z", "+00:00")
+
+        data_roles = []
+        for doc in roles_collection.find({}):
+            new_doc = doc.pop("_id")
+            str_id_role = str(new_doc)
+            doc["_id"] = str_id_role
+            minn_filte = {"Role ID": str_id_role}
+            found_in_manning = True
+            add_role = True
+
+            for man_doc in manning_collection.find(minn_filte):
+                date = man_doc["Job end date"].replace("Z", "+00:00")
+                print("high date: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
+
+                if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) >= datetime.datetime.fromisoformat(user_end_role):
+                    add_role = False
+                    break
+                break
+
+            if found_in_manning and add_role:
+                data_roles += [doc]
+        
+        response = flask.jsonify({"dataRoles": data_roles})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
+
+
+
 # manning
 @app.route("/api/manning", methods=["GET", "POST"])
+@login_required
 def manning():
     isAdmin = check_athority()
     if not isAdmin:
@@ -174,6 +212,7 @@ def manning():
 
 #Placement Meetings
 @app.route("/api/placementMeetings", methods=["GET", "POST"])
+@login_required
 def placementMeetings():
     isAdmin = check_athority()
     if not isAdmin:
@@ -204,6 +243,7 @@ def placementMeetings():
 
 #role<key>
 @app.route("/api/roles/<key>", methods=["GET", "POST"])
+@login_required
 def role(key):
     response = ""
     if request.method == "GET":
@@ -214,6 +254,7 @@ def role(key):
 
 
 @app.route("/api/roles", methods=["GET", "POST"])
+@login_required
 def roles():
     response = ""
     isAdmin = check_athority()
@@ -242,6 +283,7 @@ def roles():
 
 #smile
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
+@login_required
 def smile(key):
     for doc in manning_collection.find({"User ID": key}):
         date = doc["Job end date"].replace("Z", "+00:00")
@@ -253,6 +295,7 @@ def smile(key):
 
 #user<key>
 @app.route("/api/users/<key>", methods=["GET", "POST"])
+@login_required
 def user(key):
     response = ""
     if request.method == "GET":
@@ -262,6 +305,7 @@ def user(key):
 
 
 @app.route("/api/users", methods=["GET", "POST"])
+@login_required
 def users():
     response = ""
     isAdmin = check_athority()
