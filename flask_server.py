@@ -197,8 +197,10 @@ def staffingForm():
                 add_role = True
                 break
         if not add_role:
-            data_staffingForm += [{"Role":doc}]
+            data_staffingForm += [{"Role":doc , "User": doc}]
 
+            
+    print(data_staffingForm)
     response = flask.jsonify({"staffingForm": data_staffingForm})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
