@@ -244,30 +244,50 @@ def staffingForm():
     response = ""
     if request.method == "GET":
         data_staffingForm = []
+        
 
-    for doc in roles_collection.find({}):
-        new_doc = doc.pop("_id")
-        str_id_role = str(new_doc)
-        doc["_id"] = str_id_role
-        minn_filte = {"Role ID": str_id_role}
-        add_role = False
+        for doc in roles_collection.find({}):
+            users_list = []
+            new_doc = doc.pop("_id")
+            str_id_role = str(new_doc)
+            doc["_id"] = str_id_role
+            minn_filte = {"Role ID": str_id_role}
+            add_role = False
 
-        for man_doc in manning_collection.find(minn_filte):
-            date = man_doc["Job end date"].replace("Z", "+00:00")
-            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
-            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
-                add_role = False
-            else:
-                add_role = True
-                break
-        if not add_role:
-            data_staffingForm += [{"Role":doc , "User": doc}]
+            for man_doc in manning_collection.find(minn_filte):
+                date = man_doc["Job end date"].replace("Z", "+00:00")
+                print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
+                if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
+                    add_role = False
+                else:
+                    add_role = True
+                    break
 
-            
-    print(data_staffingForm)
-    response = flask.jsonify({"staffingForm": data_staffingForm})
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
+
+            if not add_role:
+                for user_doc in user_collection.find({}):
+                    new_doc = user_doc.pop("_id")
+                    str_id_user = str(new_doc)
+                    user_doc["_id"] = str_id_user
+                    minn_filte1 = {"User ID": str_id_user}
+                    add_user = True
+                    for man_doc in manning_collection.find(minn_filte1):
+                        if man_doc:
+                            date = man_doc["Job end date"].replace("Z", "+00:00")
+                            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
+                                add_user = False
+                                break
+                    if add_user:
+                        users_list += [user_doc]
+                        
+                data_staffingForm += [{"Role":doc , "User": users_list}]
+
+
+                
+        print(data_staffingForm)
+        response = flask.jsonify({"staffingForm": data_staffingForm})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
 
 
 
