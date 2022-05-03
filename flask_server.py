@@ -73,6 +73,7 @@ def check_athority():
 def get_current_user():
 
     obj_id = current_user.get_id()
+
     user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]       
     return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
 
@@ -184,6 +185,7 @@ def optional_roles(key):
                         break
                     break               
   
+
             if add_role:
                 print("add role:", doc)
                 data_roles += [doc]
@@ -221,7 +223,6 @@ def user_role(key):
         job_end_date_format = job_end_date.strftime("%d/%m/%Y")
         user_manning["Job end date"] = job_end_date_format
     return jsonify({"userRole": user_manning})
-
 
 
 # manning
