@@ -195,20 +195,20 @@ def optional_roles(key):
         response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
-#solidiers status
-@app.route("/api/soldiers_status/<key>", methods=["GET"])
+#employee status
+@app.route("/api/employee_status/<key>", methods=["GET"])
 @login_required
-def soldiers_status(key):
-    soldiers_list = []
-    users_filter = {"Commander": key}
-    for soldier in user_collection.find(users_filter):
-        new_doc = soldier.pop("_id")
-        str_id_soldier = str(new_doc)
-        soldier["_id"] = str_id_soldier
-        smile = get_smile(soldier["_id"])
-        soldiers_list += [{"soldier": soldier, "smile": smile}]
-        print(soldiers_list)
-    return jsonify({"soldiersList": soldiers_list})
+def employee_status(key):
+    employee_list = []
+    users_filter = {"Employer": key}
+    for employee in user_collection.find(users_filter):
+        new_doc = employee.pop("_id")
+        str_id_employee = str(new_doc)
+        employee["_id"] = str_id_employee
+        smile = get_smile(employee["_id"])
+        employee_list += [{"employee": employee, "smile": smile}]
+        print(employee_list)
+    return jsonify({"employeeList": employee_list})
 
 #userRole
 @app.route("/api/user_role/<key>", methods=["GET"])
