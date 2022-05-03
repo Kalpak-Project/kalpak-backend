@@ -74,21 +74,9 @@ def get_current_user():
 
     obj_id = current_user.get_id()
     user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
-    user_manning = manning_collection.find_one({"User ID": obj_id})
-    print("type: ", type(user_manning))
-    if user_manning:
-        found_manning_id = user_manning.pop("_id")
-        str_id_manning = str(found_manning_id)
-        user_manning["_id"] = str_id_manning
-        job_end_date = user_manning["Job end date"].replace("Z", "+00:00")
-        job_end_date = datetime.datetime.fromisoformat(job_end_date)
-        job_end_date_format = job_end_date.strftime("%d/%m/%Y")
-        user_manning["Job end date"] = job_end_date_format
         
-        
-    print("user role: ", user_manning)
-    return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name, "userRole": user_manning})
-
+    return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
+    
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -158,9 +146,11 @@ def logout():
 
 
 # home_page, Optional future roles table
-@app.route("/api/optional_roles/<key>", methods=["GET", "POST"])
+@app.route("/api/optional_roles/<key>", methods=["GET"])
+@login_required
 def optional_roles(key):
-     if request.method == "GET":
+    response = ""
+    if request.method == "GET":
         user_ = manning_collection.find_one({"User ID":key})
         
         # check if user has a manning
@@ -196,14 +186,44 @@ def optional_roles(key):
                         break
                     break
                 
-
+            
             if add_role:
+                print("add role:", doc)
                 data_roles += [doc]
         
         response = flask.jsonify({"dataRoles": data_roles})
         response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
+    return response
 
+#solidiers status
+@app.route("/api/soldiers_status/<key>", methods=["GET"])
+@login_required
+def soldiers_status(key):
+    soldiers_list = []
+    users_filter = {"Commander": key}
+    for soldier in user_collection.find(users_filter):
+        new_doc = soldier.pop("_id")
+        str_id_soldier = str(new_doc)
+        soldier["_id"] = str_id_soldier
+        smile = get_smile(soldier["_id"])
+        soldiers_list += [{"soldier": soldier, "smile": smile}]
+        print(soldiers_list)
+    return jsonify({"soldiersList": soldiers_list})
+
+#userRole
+@app.route("/api/user_role/<key>", methods=["GET"])
+@login_required
+def user_role(key):
+    user_manning = manning_collection.find_one({"User ID": key})
+    if user_manning:
+        found_manning_id = user_manning.pop("_id")
+        str_id_manning = str(found_manning_id)
+        user_manning["_id"] = str_id_manning
+        job_end_date = user_manning["Job end date"].replace("Z", "+00:00")
+        job_end_date = datetime.datetime.fromisoformat(job_end_date)
+        job_end_date_format = job_end_date.strftime("%d/%m/%Y")
+        user_manning["Job end date"] = job_end_date_format
+    return jsonify({"userRole": user_manning})
 
 
 # manning
@@ -313,7 +333,6 @@ def role(key):
     return response
 
 
-
 @app.route("/api/roles", methods=["GET", "POST"])
 @login_required
 def roles():
@@ -346,13 +365,18 @@ def roles():
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
 @login_required
 def smile(key):
+    return(flask.jsonify({"smile": get_smile(key)}))
+
+# recive user_id and returns if the user should be worry or not (smile or not)
+def get_smile(key):
     for doc in manning_collection.find({"User ID": key}):
         date = doc["Job end date"].replace("Z", "+00:00")
         
         if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
             print("sad: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
-            return flask.jsonify({"smile":True})
-    return flask.jsonify({"smile":False})
+            return True
+    return False
+    
 
 
 #user<key>
