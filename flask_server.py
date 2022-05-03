@@ -76,7 +76,6 @@ def get_current_user():
     user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]
         
     return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
-    
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -186,7 +185,7 @@ def optional_roles(key):
                         break
                     break
                 
-            
+                
             if add_role:
                 print("add role:", doc)
                 data_roles += [doc]
@@ -376,7 +375,7 @@ def get_smile(key):
             print("sad: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
             return True
     return False
-    
+
 
 
 #user<key>
