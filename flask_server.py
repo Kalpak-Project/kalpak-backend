@@ -68,6 +68,7 @@ def check_athority():
 def get_current_user():
 
     obj_id = current_user.get_id()
+
     user_name = user_collection.find_one({"_id": ObjectId(obj_id)})["user_name"]       
     return jsonify({"id": current_user.get_id(), "isAdmin": check_athority(), "user": user_name})
 
@@ -247,8 +248,6 @@ def manning():
         manning_collection.insert_one(manning)
 
     return response
-    
-
 
 @app.route("/api/selectedUserRole", methods=["POST"])
 @login_required
@@ -289,6 +288,7 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
+
     data_staffingForm = []
     for doc in roles_collection.find({}):
         users_list = []
@@ -327,7 +327,6 @@ def staffingForm():
     response = flask.jsonify({"staffingForm": data_staffingForm})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
-
 
 
 #Placement Meetings
