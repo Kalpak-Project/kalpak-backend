@@ -35,13 +35,8 @@ client = MongoClient(
 db = client.get_database("KALPAK")
 
 roles_collection = db.Roles
-# roles_docs = roles_collection.find({})
-
-# persons_collection = db.Persons
-# # persons_docs = persons_collection.find({})
 
 manning_collection = db.Manning
-# manning_docs = manning_collection.find({})
 
 user_collection = db.Users
 users_docs = user_collection.find({})
@@ -185,7 +180,6 @@ def optional_roles(key):
                         break
                     break               
   
-
             if add_role:
                 print("add role:", doc)
                 data_roles += [doc]
@@ -225,6 +219,7 @@ def user_role(key):
     return jsonify({"userRole": user_manning})
 
 
+
 # manning
 @app.route("/api/manning", methods=["GET", "POST"])
 @login_required
@@ -253,72 +248,96 @@ def manning():
         manning_collection.insert_one(manning)
 
     return response
+
+@app.route("/api/selectedUserRole", methods=["POST"])
+@login_required
+def selectedUserRole():
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
+    response = ""
+    newManning = request.data
+    manningStr = newManning.decode("utf-8")
+    newManningJson = json.loads(manningStr)
     
+   
+    users = newManningJson["Users"]
+    rolse = newManningJson["Roles"]
+    role_filte = {"Role ID": rolse["_id"]}  
+    user_filte = {"User ID": users["_id"]}
+
+    manning = {}
+    start_date = manning_collection.find(role_filte["Job end date"])
+    
+    duration = roles_collection.find(role_filte["Duration"])
+    end_date = datetime.datetime.fromisoformat(start_date) + datetime.timedelta(days=duration)
+   
+    manning["User ID"] = user_filte
+    manning["Role ID"] = role_filte
+    manning["Date of staffing"] = start_date
+    manning["Job end date"] = end_date
+     
+    manning_collection.insert_one(manning)
+    return response
+    
+
 #Staffing Form
-@app.route("/api/StaffingForm", methods=["GET", "POST"])
+@app.route("/api/staffingForm", methods=["GET"])
 def staffingForm():
     isAdmin = check_athority()
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    if request.method == "GET":
-        data_staffingForm = []      
 
-        for doc in roles_collection.find({}):
-            users_list = []
-            new_doc = doc.pop("_id")
-            str_id_role = str(new_doc)
-            doc["_id"] = str_id_role
-            minn_filte = {"Role ID": str_id_role}
-            add_role = False
+    data_staffingForm = []
+    for doc in roles_collection.find({}):
+        users_list = []
+        new_doc = doc.pop("_id")
+        str_id_role = str(new_doc)
+        doc["_id"] = str_id_role
+        minn_filte = {"Role ID": str_id_role}
+        add_role = False
 
-            for man_doc in manning_collection.find(minn_filte):
-                date = man_doc["Job end date"].replace("Z", "+00:00")
-                print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
-                if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
-                    add_role = False
-                else:
-                    add_role = True
-                    break
-
-
-            if not add_role:
-                for user_doc in user_collection.find({}):
-                    new_doc = user_doc.pop("_id")
-                    str_id_user = str(new_doc)
-                    user_doc["_id"] = str_id_user
-                    minn_filte1 = {"User ID": str_id_user}
-                    add_user = True
-                    for man_doc in manning_collection.find(minn_filte1):
-                        if man_doc:
-                            date = man_doc["Job end date"].replace("Z", "+00:00")
-                            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
-                                add_user = False
-                                break
-                    if add_user:
-                        users_list += [user_doc]
+        for man_doc in manning_collection.find(minn_filte):
+            date = man_doc["Job end date"].replace("Z", "+00:00")
+            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
+            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
+                add_role = False
+            else:
+                add_role = True
+                break
+        if not add_role:
+            for user_doc in user_collection.find({}):
+                new_doc = user_doc.pop("_id")
+                str_id_user = str(new_doc)
+                user_doc["_id"] = str_id_user
+                minn_filte1 = {"User ID": str_id_user}
+                add_user = True
+                for man_doc in manning_collection.find(minn_filte1):
+                    if man_doc:
+                        date = man_doc["Job end date"].replace("Z", "+00:00")
+                        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
+                            add_user = False
+                            break
+                if add_user:
+                    users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
                         
-                data_staffingForm += [{"Role":doc , "User": users_list}]
-
-
-                
-        print(data_staffingForm)
-        response = flask.jsonify({"staffingForm": data_staffingForm})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
-
+            data_staffingForm += [{"Role":doc , "User": users_list}]
+    print(data_staffingForm)
+    response = flask.jsonify({"staffingForm": data_staffingForm})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
 
 
 #Placement Meetings
-@app.route("/api/placementMeetings", methods=["GET", "POST"])
+@app.route("/api/placementMeetings", methods=["GET"])
 @login_required
 def placementMeetings():
     isAdmin = check_athority()
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    if request.method == "GET":
-        data_placementMeetings = []
+    data_placementMeetings = []
 
     for doc in roles_collection.find({}):
         new_doc = doc.pop("_id")
