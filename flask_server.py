@@ -279,7 +279,7 @@ def selectedUserRole():
             roleFoundInManning = manning_collection.find_one(role)
             if roleFoundInManning:
                 print("roleFoundInManning: ", roleFoundInManning)
-                dateOfStaffingOfCurrent = roleFoundInManning['Job end date']
+                dateOfStaffingOfCurrent = roleFoundInManning['Job end date'].replace("Z", "+00:00")
                 jobEndDateOfCurrent = datetime.datetime.fromisoformat(dateOfStaffingOfCurrent) + datetime.timedelta(days=roleDuration)
             else:
                 dateOfStaffingOfCurrent = datetime.datetime.utcnow().astimezone()
