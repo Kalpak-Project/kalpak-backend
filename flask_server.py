@@ -235,6 +235,7 @@ def manning():
 
         response = flask.jsonify({"manning": data_manning})
         response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
 
     else:
         newManning = request.data
@@ -244,10 +245,11 @@ def manning():
         for field in newManningJson:
             manning[field["key"]] = field["value"]
 
-        print(manning)
+        print("addManning: ", manning)
         manning_collection.insert_one(manning)
+        return response
 
-    return response
+    
 
 @app.route("/api/selectedUserRole", methods=["POST"])
 @login_required
@@ -256,28 +258,41 @@ def selectedUserRole():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    newManning = request.data
-    manningStr = newManning.decode("utf-8")
-    newManningJson = json.loads(manningStr)
+    staffings = request.data
+    print("staffings: ", staffings)
+    staffingsStr = staffings.decode("utf-8")
+    newStaffingsJson = json.loads(staffingsStr)
     
-   
-    users = newManningJson["Users"]
-    rolse = newManningJson["Roles"]
-    role_filte = {"Role ID": rolse["_id"]}  
-    user_filte = {"User ID": users["_id"]}
+    users = newStaffingsJson["Users"]
+    roles = newStaffingsJson["Roles"]
+    staffingsList = []
+    
+    for i in range(len(roles)):
+        if users[i]: # Checks whether a user has been staffed to this role
+            role = {"Role ID": roles[i]}  
+            user = {"User ID": users[i]}
+            
+            roleDuration = roles_collection.find_one({"_id":ObjectId(role['Role ID'])})["Duration"]
+            dateOfStaffingOfCurrent = ""
+            jobEndDateOfCurrent  = ""
+        
+            roleFoundInManning = manning_collection.find_one(role)
+            if roleFoundInManning:
+                print("roleFoundInManning: ", roleFoundInManning)
+                dateOfStaffingOfCurrent = roleFoundInManning['Job end date']
+                jobEndDateOfCurrent = datetime.datetime.fromisoformat(dateOfStaffingOfCurrent) + datetime.timedelta(days=roleDuration)
+            else:
+                dateOfStaffingOfCurrent = datetime.datetime.utcnow().astimezone()
+                jobEndDateOfCurrent = datetime.datetime.fromisoformat(str(dateOfStaffingOfCurrent)) + datetime.timedelta(days=roleDuration)
 
-    manning = {}
-    start_date = manning_collection.find(role_filte["Job end date"])
+                
+
+            staffingsList += [{"User ID": user["User ID"], "Role ID": role["Role ID"],
+                               "Date of staffing": str(dateOfStaffingOfCurrent), "Job end date": str(jobEndDateOfCurrent)}]
     
-    duration = roles_collection.find(role_filte["Duration"])
-    end_date = datetime.datetime.fromisoformat(start_date) + datetime.timedelta(days=duration)
-   
-    manning["User ID"] = user_filte
-    manning["Role ID"] = role_filte
-    manning["Date of staffing"] = start_date
-    manning["Job end date"] = end_date
-     
-    manning_collection.insert_one(manning)
+    manning_collection.insert_many(staffingsList)
+    print("added to manning: ", staffingsList)
+    response = jsonify({"success": "added into manning!"})
     return response
     
 
@@ -414,8 +429,6 @@ def get_smile(key):
             return True
     return False
 
-
-
 #user<key>
 @app.route("/api/users/<key>", methods=["GET", "POST"])
 @login_required
@@ -444,7 +457,7 @@ def users():
         response.headers.add("Access-Control-Allow-Origin", "*")
     else:
         
-        # need to fix the check if user already exists in the table
+    # need to fix the check if user already exists in the table
         #  user = request.data
         # found = user_collection.find_one({"user_name": user[0].user_name}, {"_id": 0})
         
