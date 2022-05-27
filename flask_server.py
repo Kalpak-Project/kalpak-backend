@@ -270,7 +270,7 @@ def selectedUserRole():
     for i in range(len(roles)):
         if users[i]: # Checks whether a user has been staffed to this role
             role = {"Role ID": roles[i]}  
-            user = {"User ID": users[i]}
+            user = {"User ID": users[i][0]}
             
             roleDuration = roles_collection.find_one({"_id":ObjectId(role['Role ID'])})["Duration"]
             dateOfStaffingOfCurrent = ""
@@ -286,7 +286,7 @@ def selectedUserRole():
                 jobEndDateOfCurrent = datetime.datetime.fromisoformat(str(dateOfStaffingOfCurrent)) + datetime.timedelta(days=roleDuration)
 
                 
-
+            print("user:", user)
             staffingsList += [{"User ID": user["User ID"], "Role ID": role["Role ID"],
                                "Date of staffing": str(dateOfStaffingOfCurrent), "Job end date": str(jobEndDateOfCurrent)}]
     
@@ -295,6 +295,9 @@ def selectedUserRole():
     response = jsonify({"success": "added into manning!"})
     return response
     
+def stringToDate(str):
+    date = str.replace("Z", "+00:00")
+    return datetime.datetime.fromisoformat(date)
 
 #Staffing Form
 @app.route("/api/staffingForm", methods=["GET"])
@@ -305,40 +308,97 @@ def staffingForm():
     response = ""
 
     data_staffingForm = []
-    for doc in roles_collection.find({}):
-        users_list = []
-        new_doc = doc.pop("_id")
-        str_id_role = str(new_doc)
-        doc["_id"] = str_id_role
-        minn_filte = {"Role ID": str_id_role}
-        add_role = False
+    
+    # mannedUsers = {}
+    # rolesForStaffing = {}
+    # for role_doc in roles_collection.find({}):
+    #     man_filte = {"Role ID": str(role_doc["_id"])}
+    #     man_doc = manning_collection.find_one(man_filte)
+    #     if man_doc:
+    #         if datetime.datetime.fromisoformat(man_doc["Job end date"].replace("Z", "+00:00")) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
+    #             rolesForStaffing[man_doc["Role ID"]] = role_doc
+    #         else:
+    #             mannedUsers[man_doc["User ID"]] = user_collection.find_one({"_id": ObjectId(man_doc["User ID"])})
+    #     else:
+    #         rolesForStaffing[str(role_doc["_id"])] = role_doc
+        
+    daysForThreshold = 180 # take from user?    
+    now = datetime.datetime.utcnow().astimezone()
+    threshold = now + datetime.timedelta(days=daysForThreshold)
+    
+    manning = manning_collection.find({})
+    
+    userToDate = {}
+    roleToDate = {}
+    for man_doc in manning:
+        userToDate[man_doc['User ID']] = man_doc['Job end date']
+        roleToDate[man_doc['Role ID']] = man_doc['Job end date']
+    
+    roles = roles_collection.find({})
+    freeRolesToEndDate = {}
+    free_roles_list = []
+    for role_doc in roles:
+        new_role_doc = role_doc.pop("_id")
+        str_id_role = str(new_role_doc)
+        role_doc["_id"] = str_id_role
+        roleID = role_doc['_id']
+        endDateStr = roleToDate.get(roleID, str(now))
+        endDate = stringToDate(endDateStr)
+        if endDate < threshold:
+            freeRolesToEndDate[roleID] = endDate
+            free_roles_list += [role_doc]
+    
+    users = user_collection.find({})
+    freeUsersToEndDate = {}
+    free_users_list = []
+    for user_doc in users:
+        new_user_doc = user_doc.pop("_id")
+        str_id_user = str(new_user_doc)
+        user_doc["_id"] = str_id_user
+        userID = user_doc['_id']
+        endDateStr = userToDate.get(userID, str(now))
+        endDate = stringToDate(endDateStr)
+        if endDate < threshold:
+            freeUsersToEndDate[userID] = endDate
+            free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
+    
+    for free_role in free_roles_list:
+        data_staffingForm += [{"Role":free_role , "User": free_users_list}]
+    
 
-        for man_doc in manning_collection.find(minn_filte):
-            date = man_doc["Job end date"].replace("Z", "+00:00")
-            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
-            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
-                add_role = False
-            else:
-                add_role = True
-                break
-        if not add_role:
-            for user_doc in user_collection.find({}):
-                new_doc = user_doc.pop("_id")
-                str_id_user = str(new_doc)
-                user_doc["_id"] = str_id_user
-                minn_filte1 = {"User ID": str_id_user}
-                add_user = True
-                for man_doc in manning_collection.find(minn_filte1):
-                    if man_doc:
-                        date = man_doc["Job end date"].replace("Z", "+00:00")
-                        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
-                            add_user = False
-                            break
-                if add_user:
-                    users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
-                        
-            data_staffingForm += [{"Role":doc , "User": users_list}]
-    print(data_staffingForm)
+    # for each role in freeRolesToEndDate go over userToDate and filter by date
+    
+    # for doc in roles_collection.find({}):
+    #     users_list = []
+    #     new_doc = doc.pop("_id")
+    #     str_id_role = str(new_doc)
+    #     doc["_id"] = str_id_role
+    #     minn_filte = {"Role ID": str_id_role}
+    #     add_role = False
+
+    #     for man_doc in manning_collection.find(minn_filte):
+    #         date = man_doc["Job end date"].replace("Z", "+00:00")
+    #         if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
+    #             add_role = False
+    #         else:
+    #             add_role = True
+    #             break
+    #     if not add_role:
+    #         for user_doc in user_collection.find({}):
+    #             new_doc = user_doc.pop("_id")
+    #             str_id_user = str(new_doc)
+    #             user_doc["_id"] = str_id_user
+    #             minn_filte1 = {"User ID": str_id_user}
+    #             add_user = True
+    #             for man_doc in manning_collection.find(minn_filte1):
+    #                 if man_doc:
+    #                     date = man_doc["Job end date"].replace("Z", "+00:00")
+    #                     if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
+    #                         add_user = False
+    #                         break
+    #             if add_user:
+    #                 users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
+    #         data_staffingForm += [{"Role":doc , "User": users_list}]
     response = flask.jsonify({"staffingForm": data_staffingForm})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
