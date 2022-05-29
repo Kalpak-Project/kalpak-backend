@@ -153,7 +153,7 @@ def optional_roles(key):
 
         data_roles = []
         
-        
+        optionalRolesIndex = 0
         for doc in roles_collection.find({}):
             new_doc = doc.pop("_id")
             str_id_role = str(new_doc)
@@ -182,11 +182,24 @@ def optional_roles(key):
   
             if add_role:
                 print("add role:", doc)
+                doc["index"] = optionalRolesIndex
                 data_roles += [doc]
+                optionalRolesIndex += 1
         
         response = flask.jsonify({"dataRoles": data_roles})
         response.headers.add("Access-Control-Allow-Origin", "*")
     return response
+
+# recive optional feuture roles, ordered by user.
+@app.route("/api/updateRolesOrder", methods=['POST'])
+@login_required
+def get_ordered_roles():
+    orderedRoles = request.data
+    orderedRolesStr = orderedRoles.decode("utf-8")
+    newListJson = json.loads(orderedRolesStr)
+    print("new order: ", newListJson)
+    return 'success'
+    
 
 #employee status
 @app.route("/api/employee_status/<key>", methods=["GET"])
