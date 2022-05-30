@@ -95,7 +95,7 @@ def register():
         # Replacing the original password with the hashed password
         del newUserJson['password']
         newUserJson['password'] = hashed_password
-    
+        newUserJson['isAdmin'] = False    
         for key, value in newUserJson.items():
             usr[key] = value
 
@@ -186,6 +186,17 @@ def optional_roles(key):
                 data_roles += [doc]
                 optionalRolesIndex += 1
         
+        current_user = user_collection.find_one({"_id": ObjectId(key)})
+        print('dict of roles: ', current_user['orderedOptionalRoles'])
+
+        for role in data_roles:
+            print("role ID: ", role['_id'])
+            if role['_id'] in current_user['orderedOptionalRoles']:
+                print('index of role:', role['index'])
+                role['index'] = current_user['orderedOptionalRoles'][str(role['_id'])]
+                print('index after change: ', role['index'])
+        print("roles after sort: ", data_roles)
+        
         response = flask.jsonify({"dataRoles": data_roles})
         response.headers.add("Access-Control-Allow-Origin", "*")
     return response
@@ -194,10 +205,15 @@ def optional_roles(key):
 @app.route("/api/updateRolesOrder", methods=['POST'])
 @login_required
 def get_ordered_roles():
-    orderedRoles = request.data
-    orderedRolesStr = orderedRoles.decode("utf-8")
-    newListJson = json.loads(orderedRolesStr)
-    print("new order: ", newListJson)
+    data = request.data
+    dataStr = data.decode("utf-8")
+    newDataJson = json.loads(dataStr)
+    print(newDataJson)
+    # orderRoleId = list(map(lambda role: {str(role['_id']): role['index']}, newDataJson['orderedList']))
+    orderRoleIDDict = {str(role['_id']): role['index'] for role in newDataJson['orderedList']}
+    print("order role ID: ", orderRoleIDDict)
+    fieldToAdd = {'orderedOptionalRoles': orderRoleIDDict}
+    user_collection.update_one({'_id': ObjectId(newDataJson['userUpdate'])}, {'$set': fieldToAdd})
     return 'success'
     
 
