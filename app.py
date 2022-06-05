@@ -143,11 +143,13 @@ def logout():
 def optional_roles(key):
     response = ""
     if request.method == "GET":
-        user_ = manning_collection.find_one({"User ID":key})
+        userRoles = manning_collection.find({"User ID":key})
         
         # check if user has a manning
-        if user_:
-            user_end_role = user_["Job end date"].replace("Z", "+00:00")
+        if userRoles:
+            userRoles = list(userRoles)
+            sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
+            user_end_role = sortedUserRoles[0]["Job end date"].replace("Z", "+00:00")
 
         data_roles = []
         
@@ -160,7 +162,7 @@ def optional_roles(key):
             add_role = True
 
             # filter all manning roles that end after 180 days from 'job end date'
-            if user_:
+            if userRoles:
                 for man_doc in manning_collection.find(minn_filte):
                     date = man_doc["Job end date"].replace("Z", "+00:00")
                     print("high date: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
@@ -231,7 +233,7 @@ def employee_status(key):
         new_doc = employee.pop("_id")
         str_id_employee = str(new_doc)
         employee["_id"] = str_id_employee
-        smile = get_smile(employee["_id"])
+        smile, date = get_smile_and_last_role(employee["_id"])
         employee_list += [{"employee": employee, "smile": smile}]
         print(employee_list)
     return jsonify({"employeeList": employee_list})
@@ -240,16 +242,14 @@ def employee_status(key):
 @app.route("/api/user_role/<key>", methods=["GET"])
 @login_required
 def user_role(key):
-    user_manning = manning_collection.find_one({"User ID": key})
-    if user_manning:
-        found_manning_id = user_manning.pop("_id")
-        str_id_manning = str(found_manning_id)
-        user_manning["_id"] = str_id_manning
-        job_end_date = user_manning["Job end date"].replace("Z", "+00:00")
-        job_end_date = datetime.datetime.fromisoformat(job_end_date)
-        job_end_date_format = job_end_date.strftime("%d/%m/%Y")
-        user_manning["Job end date"] = job_end_date_format
-    return jsonify({"userRole": user_manning})
+    user_manning = manning_collection.find({"User ID": key})
+    role = None
+    smile, last_role = get_smile_and_last_role(key)
+    if last_role:
+        role_id_str = str(last_role['_id'])
+        last_role['_id'] = role_id_str
+        role = last_role
+    return jsonify({"userRole": role})
 
 
 
@@ -486,17 +486,25 @@ def roles():
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
 @login_required
 def smile(key):
-    return(flask.jsonify({"smile": get_smile(key)}))
+    smiley, last_role = get_smile_and_last_role(key)
+    return(flask.jsonify({"smile": smiley}))
 
 # recive user_id and returns if the user should be worry or not (smile or not)
-def get_smile(key):
-    for doc in manning_collection.find({"User ID": key}):
-        date = doc["Job end date"].replace("Z", "+00:00")
+def get_smile_and_last_role(key):
+    smile = False
+    lastRole = None
+    userRoles = manning_collection.find({'User ID': key})
+    if userRoles:
+        userRoles = list(userRoles)
+        sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
+        lastRole = sortedUserRoles[0]
+        date = datetime.datetime.fromisoformat(lastRole['Job end date'].replace("Z", "+00:00"))
         
-        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
-            print("sad: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
-            return True
-    return False
+        if date - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
+            print("happy: ", date)
+            smile = True
+        
+    return smile, lastRole
 
 #user<key>
 @app.route("/api/users/<key>", methods=["GET", "POST"])
@@ -548,8 +556,37 @@ def users():
     
     return response
 
+@app.get("/api/rolesHistory/<key>")
+@login_required
+def getRolesHistory(key):
+    rolesHistory = manning_collection.find({'User ID': key})
+    if rolesHistory:
+        rolesHistory = list(rolesHistory)
+        sortedRolesHistory = sorted(rolesHistory, key=lambda x: x['Job end date'], reverse=True)
+        for role in sortedRolesHistory:
+            newRole = role.pop("_id")
+            strID = str(newRole)
+            role['_id'] = strID
+            job_staffing = role['Date of staffing'].replace("Z", "+00:00")
+            job_staffing = datetime.datetime.fromisoformat(job_staffing)
+            job_staffing_format = job_staffing.strftime("%d/%m/%Y")
+            role['Date of staffing'] =  job_staffing_format
+            job_end_date = role["Job end date"].replace("Z", "+00:00")
+            job_end_date = datetime.datetime.fromisoformat(job_end_date)
+            job_end_date_format = job_end_date.strftime("%d/%m/%Y")
+            role["Job end date"] = job_end_date_format
+        addRolesTitle(rolesHistory)
+    print('rolesHistory: ', sortedRolesHistory)
+    return flask.jsonify({"rolesHistory": sortedRolesHistory})
+
+def addRolesTitle(rolesHistory):
+    for role in rolesHistory:
+        roleInRoles = roles_collection.find_one({'_id': ObjectId(role['Role ID'])})
+        roleTitle = roleInRoles['Title']
+        role['Title'] = roleTitle
+        
 
 if __name__ == "__main__":
     logbook.StreamHandler(sys.stdout).push_application() 
-    # app.run(debug=True)
-    app.run(ssl_context=('cert.pem', 'key.pem'))
+    # app.run(ssl_context=('cert.pem', 'key.pem'))
+    app.run(debug=True)
