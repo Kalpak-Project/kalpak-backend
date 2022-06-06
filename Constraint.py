@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from app import getHistory
 
 
 # Abstract class for constraints
@@ -8,25 +9,23 @@ class Constraint(ABC):
     def isConsist(self, assignment):
         pass
 
-
-# Class for constraint Type:
-# The sum of the variables of the adding should be equal to the result variable.
-class SumEquals(Constraint):
-
-    def __init__(self, vars, res, carry='0'):
-        self.vars = vars
-        self.res = res
-        self.carry = carry
-        self.varList = self.vars + [self.res, self.carry]
-
-    def isConsist(self, assignment):
-        for var in self.varList:
-            if var not in assignment:
-                return True
-        values = list(map(lambda x: assignment[x], self.vars))
-        sumVars = sum(values)
-        resWithCarry = assignment[self.res] + (assignment[self.carry] * 10)
-        return sumVars == resWithCarry
+class TrainingRequired(Constraint):
+    
+    def __init__(self, consId, requirement):
+        self.consId = consId
+        self.requirement = requirement
+        
+    def isConsist(self, assignment, vars, values):
+        for ass in assignment:
+            if 'Constraints' in vars[ass].var:
+                if self.consId in vars[ass].var['Constraints']:
+                    strUserID = assignment[ass]
+                    user_roles = getHistory(strUserID)
+                    roleIdList = list(map(lambda role: role['Role ID'], user_roles))
+                    if self.requirement not in roleIdList:
+                        # vars[ass].getDomain().removeFromDomain(assignment[ass])
+                        return False        
+        return True
 
 
 # Class for constraint Type:
@@ -36,8 +35,11 @@ class AllDifferent(Constraint):
     def __init__(self, vars):
         self.vars = vars
 
-    def isConsist(self, assignment):
-        filteredVars = list(filter(lambda x: (x in assignment) and (len(x) == 1), self.vars))
+    def isConsist(self, assignment, vars, values):
+        filteredVars = list(filter(lambda x: (x in assignment), self.vars))
         values = list(map(lambda x: assignment[x], filteredVars))
         valuesSet = set(values)
-        return len(valuesSet) == len(values)
+        return len(valuesSet) == len(values)            
+                
+
+            

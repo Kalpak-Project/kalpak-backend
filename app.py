@@ -1,5 +1,4 @@
 from asyncio.log import logger
-from unicodedata import name
 from flask import Flask, request
 import flask
 import json
@@ -333,16 +332,15 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    
-    data_staffingForm = getFreeUsers()
+    data_staffingForm = getRolesAndFreeUsers()
     response = flask.jsonify({"staffingForm": data_staffingForm})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
-def getFreeUsers():
+# return all free roles and free users. list of dicts: [{'Role': roleDoc, 'User': [freeUsers] }]
+def getRolesAndFreeUsers():
     data_staffingForm = []
-        
     daysForThreshold = 180 # take from user?    
     now = datetime.datetime.utcnow().astimezone()
     threshold = now + datetime.timedelta(days=daysForThreshold)
@@ -554,9 +552,7 @@ def users():
 @app.get("/api/rolesHistory/<key>")
 @login_required
 def getRolesHistory(key):
-    rolesHistory = manning_collection.find({'User ID': key})
-    if rolesHistory:
-       sortedRolesHistory = getHistory(key)
+    sortedRolesHistory = getHistory(key)
     print('rolesHistory: ', sortedRolesHistory)
     return flask.jsonify({"rolesHistory": sortedRolesHistory})
 

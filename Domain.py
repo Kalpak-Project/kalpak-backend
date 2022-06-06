@@ -5,18 +5,16 @@ class Domain:
 
     def __init__(self, domain):
         self.domain = domain
-        self.originalDomain = copy.deepcopy(domain)
 
-    def addToDomain(self, value):
-        if value in self.originalDomain:
-            self.domain += [value]
+    def addToDomain(self, value, valDoc):
+        self.domain[value] = valDoc
 
     def removeFromDomain(self, value):
         if value in self.domain:
-            self.domain.remove(value)
+            del self.domain[value]
 
     def getNextFreeDomain(self):
         return self.domain[0]
 
-    def getDomainList(self):
+    def getDomainDict(self):
         return self.domain
