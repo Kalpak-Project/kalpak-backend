@@ -36,8 +36,9 @@ roles_collection = db.Roles
 
 manning_collection = db.Manning
 
+constraints_collection = db.Constraints
+
 user_collection = db.Users
-users_docs = user_collection.find({})
 
 app = Flask(__name__)
 
@@ -148,8 +149,9 @@ def optional_roles(key):
         # check if user has a manning
         if userRoles:
             userRoles = list(userRoles)
-            sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
-            user_end_role = sortedUserRoles[0]["Job end date"].replace("Z", "+00:00")
+            if len(userRoles) > 0:
+                sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
+                user_end_role = sortedUserRoles[0]["Job end date"].replace("Z", "+00:00")
 
         data_roles = []
         
@@ -165,7 +167,6 @@ def optional_roles(key):
             if userRoles:
                 for man_doc in manning_collection.find(minn_filte):
                     date = man_doc["Job end date"].replace("Z", "+00:00")
-                    print("high date: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
                     if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) >= datetime.datetime.fromisoformat(user_end_role):
                         add_role = False
                         break
@@ -174,29 +175,22 @@ def optional_roles(key):
             else:
                  for man_doc in manning_collection.find(minn_filte):
                     date = man_doc["Job end date"].replace("Z", "+00:00")
-                    print("high date: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
                     if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) >= datetime.datetime.utcnow().astimezone():
                         add_role = False
                         break
                     break               
   
             if add_role:
-                print("add role:", doc)
                 doc["index"] = optionalRolesIndex
                 data_roles += [doc]
                 optionalRolesIndex += 1
         
         current_user = user_collection.find_one({"_id": ObjectId(key)})
         if 'orderedOptionalRoles' in current_user: 
-            print('dict of roles: ', current_user['orderedOptionalRoles'])
 
             for role in data_roles:
-                print("role ID: ", role['_id'])
                 if role['_id'] in current_user['orderedOptionalRoles']:
-                    print('index of role:', role['index'])
                     role['index'] = current_user['orderedOptionalRoles'][str(role['_id'])]
-                    print('index after change: ', role['index'])
-            print("roles after sort: ", data_roles)
         
         response = flask.jsonify({"dataRoles": data_roles})
         response.headers.add("Access-Control-Allow-Origin", "*")
@@ -496,13 +490,14 @@ def get_smile_and_last_role(key):
     userRoles = manning_collection.find({'User ID': key})
     if userRoles:
         userRoles = list(userRoles)
-        sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
-        lastRole = sortedUserRoles[0]
-        date = datetime.datetime.fromisoformat(lastRole['Job end date'].replace("Z", "+00:00"))
-        
-        if date - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
-            print("happy: ", date)
-            smile = True
+        if len(userRoles) > 0:
+            sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
+            lastRole = sortedUserRoles[0]
+            date = datetime.datetime.fromisoformat(lastRole['Job end date'].replace("Z", "+00:00"))
+            
+            if date - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
+                print("happy: ", date)
+                smile = True
         
     return smile, lastRole
 
@@ -561,6 +556,13 @@ def users():
 def getRolesHistory(key):
     rolesHistory = manning_collection.find({'User ID': key})
     if rolesHistory:
+       sortedRolesHistory = getHistory(key)
+    print('rolesHistory: ', sortedRolesHistory)
+    return flask.jsonify({"rolesHistory": sortedRolesHistory})
+
+def getHistory(key):
+    rolesHistory = manning_collection.find({'User ID': key})
+    if rolesHistory:
         rolesHistory = list(rolesHistory)
         sortedRolesHistory = sorted(rolesHistory, key=lambda x: x['Job end date'], reverse=True)
         for role in sortedRolesHistory:
@@ -575,15 +577,28 @@ def getRolesHistory(key):
             job_end_date = datetime.datetime.fromisoformat(job_end_date)
             job_end_date_format = job_end_date.strftime("%d/%m/%Y")
             role["Job end date"] = job_end_date_format
-        addRolesTitle(rolesHistory)
-    print('rolesHistory: ', sortedRolesHistory)
-    return flask.jsonify({"rolesHistory": sortedRolesHistory})
+        addRolesTitle(sortedRolesHistory)
+    return sortedRolesHistory
+    
 
 def addRolesTitle(rolesHistory):
     for role in rolesHistory:
         roleInRoles = roles_collection.find_one({'_id': ObjectId(role['Role ID'])})
         roleTitle = roleInRoles['Title']
         role['Title'] = roleTitle
+
+@app.get('/api/getFileOfRole/<key>')
+@login_required
+def getFileOfRole(key):
+    print('key: ', key)
+    role = manning_collection.find_one({'_id': ObjectId(key)})
+    path = role['file_path']
+    pdfFile = open(path)
+    return pdfFile
+
+
+def get_constraits():
+    return constraints_collection.find({})
         
 
 if __name__ == "__main__":

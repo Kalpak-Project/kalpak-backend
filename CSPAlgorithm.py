@@ -20,7 +20,9 @@ class csp:
         return free
     
     
-        
+
 aaa = csp()
-        
+print('roles: ', aaa.freeRoles)      
+print('users: ', aaa.freeUsers)        
+  
         
