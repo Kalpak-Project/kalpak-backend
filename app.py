@@ -1,4 +1,3 @@
-# from ast import Delete
 from asyncio.log import logger
 from unicodedata import name
 from flask import Flask, request
@@ -26,7 +25,6 @@ from flask_login import (
     current_user,
 )
 
-
 client = MongoClient(
     "mongodb+srv://UI_REACT:alex_has@project1.famyl.mongodb.net/KALPAK?retryWrites=true&w=majority",
     tlsAllowInvalidCertificates = True
@@ -38,8 +36,9 @@ roles_collection = db.Roles
 
 manning_collection = db.Manning
 
+constraints_collection = db.Constraints
+
 user_collection = db.Users
-users_docs = user_collection.find({})
 
 app = Flask(__name__)
 
@@ -95,7 +94,7 @@ def register():
         # Replacing the original password with the hashed password
         del newUserJson['password']
         newUserJson['password'] = hashed_password
-    
+        newUserJson['isAdmin'] = False    
         for key, value in newUserJson.items():
             usr[key] = value
 
@@ -145,15 +144,18 @@ def logout():
 def optional_roles(key):
     response = ""
     if request.method == "GET":
-        user_ = manning_collection.find_one({"User ID":key})
+        userRoles = manning_collection.find({"User ID":key})
         
         # check if user has a manning
-        if user_:
-            user_end_role = user_["Job end date"].replace("Z", "+00:00")
+        if userRoles:
+            userRoles = list(userRoles)
+            if len(userRoles) > 0:
+                sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
+                user_end_role = sortedUserRoles[0]["Job end date"].replace("Z", "+00:00")
 
         data_roles = []
         
-        
+        optionalRolesIndex = 0
         for doc in roles_collection.find({}):
             new_doc = doc.pop("_id")
             str_id_role = str(new_doc)
@@ -162,10 +164,9 @@ def optional_roles(key):
             add_role = True
 
             # filter all manning roles that end after 180 days from 'job end date'
-            if user_:
+            if userRoles:
                 for man_doc in manning_collection.find(minn_filte):
                     date = man_doc["Job end date"].replace("Z", "+00:00")
-                    print("high date: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
                     if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) >= datetime.datetime.fromisoformat(user_end_role):
                         add_role = False
                         break
@@ -174,19 +175,47 @@ def optional_roles(key):
             else:
                  for man_doc in manning_collection.find(minn_filte):
                     date = man_doc["Job end date"].replace("Z", "+00:00")
-                    print("high date: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
                     if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) >= datetime.datetime.utcnow().astimezone():
                         add_role = False
                         break
                     break               
   
             if add_role:
-                print("add role:", doc)
+                doc["index"] = optionalRolesIndex
                 data_roles += [doc]
+                optionalRolesIndex += 1
+        
+        current_user = user_collection.find_one({"_id": ObjectId(key)})
+        if 'orderedOptionalRoles' in current_user: 
+
+            for role in data_roles:
+                if role['_id'] in current_user['orderedOptionalRoles']:
+                    role['index'] = current_user['orderedOptionalRoles'][str(role['_id'])]
         
         response = flask.jsonify({"dataRoles": data_roles})
         response.headers.add("Access-Control-Allow-Origin", "*")
     return response
+
+# recive optional feuture roles, ordered by user.
+@app.route("/api/updateRolesOrder", methods=['POST'])
+@login_required
+def get_ordered_roles():
+    data = request.data
+    dataStr = data.decode("utf-8")
+    newDataJson = json.loads(dataStr)
+    print(newDataJson)
+    orderRoleIDDict = {str(role['_id']): role['index'] for role in newDataJson['orderedList']}
+    print("order role ID: ", orderRoleIDDict)
+    fieldToAdd = {'orderedOptionalRoles': orderRoleIDDict}
+    user_collection.update_one({'_id': ObjectId(newDataJson['userUpdate'])}, {'$set': fieldToAdd})
+    return 'success'
+
+def getUsersOrderedRoles():
+    usersOrederList = {}
+    for user in user_collection.find({}):
+        if 'orderedOptionalRoles' in user:
+            usersOrederList[str(user['_id'])] = user['orderedOptionalRoles']
+    return usersOrederList    
 
 #employee status
 @app.route("/api/employee_status/<key>", methods=["GET"])
@@ -198,7 +227,7 @@ def employee_status(key):
         new_doc = employee.pop("_id")
         str_id_employee = str(new_doc)
         employee["_id"] = str_id_employee
-        smile = get_smile(employee["_id"])
+        smile, date = get_smile_and_last_role(employee["_id"])
         employee_list += [{"employee": employee, "smile": smile}]
         print(employee_list)
     return jsonify({"employeeList": employee_list})
@@ -207,16 +236,14 @@ def employee_status(key):
 @app.route("/api/user_role/<key>", methods=["GET"])
 @login_required
 def user_role(key):
-    user_manning = manning_collection.find_one({"User ID": key})
-    if user_manning:
-        found_manning_id = user_manning.pop("_id")
-        str_id_manning = str(found_manning_id)
-        user_manning["_id"] = str_id_manning
-        job_end_date = user_manning["Job end date"].replace("Z", "+00:00")
-        job_end_date = datetime.datetime.fromisoformat(job_end_date)
-        job_end_date_format = job_end_date.strftime("%d/%m/%Y")
-        user_manning["Job end date"] = job_end_date_format
-    return jsonify({"userRole": user_manning})
+    user_manning = manning_collection.find({"User ID": key})
+    role = None
+    smile, last_role = get_smile_and_last_role(key)
+    if last_role:
+        role_id_str = str(last_role['_id'])
+        last_role['_id'] = role_id_str
+        role = last_role
+    return jsonify({"userRole": role})
 
 
 
@@ -270,7 +297,7 @@ def selectedUserRole():
     for i in range(len(roles)):
         if users[i]: # Checks whether a user has been staffed to this role
             role = {"Role ID": roles[i]}  
-            user = {"User ID": users[i]}
+            user = {"User ID": users[i][0]}
             
             roleDuration = roles_collection.find_one({"_id":ObjectId(role['Role ID'])})["Duration"]
             dateOfStaffingOfCurrent = ""
@@ -286,7 +313,7 @@ def selectedUserRole():
                 jobEndDateOfCurrent = datetime.datetime.fromisoformat(str(dateOfStaffingOfCurrent)) + datetime.timedelta(days=roleDuration)
 
                 
-
+            print("user:", user)
             staffingsList += [{"User ID": user["User ID"], "Role ID": role["Role ID"],
                                "Date of staffing": str(dateOfStaffingOfCurrent), "Job end date": str(jobEndDateOfCurrent)}]
     
@@ -295,6 +322,9 @@ def selectedUserRole():
     response = jsonify({"success": "added into manning!"})
     return response
     
+def stringToDate(str):
+    date = str.replace("Z", "+00:00")
+    return datetime.datetime.fromisoformat(date)
 
 #Staffing Form
 @app.route("/api/staffingForm", methods=["GET"])
@@ -303,45 +333,66 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-
-    data_staffingForm = []
-    for doc in roles_collection.find({}):
-        users_list = []
-        new_doc = doc.pop("_id")
-        str_id_role = str(new_doc)
-        doc["_id"] = str_id_role
-        minn_filte = {"Role ID": str_id_role}
-        add_role = False
-
-        for man_doc in manning_collection.find(minn_filte):
-            date = man_doc["Job end date"].replace("Z", "+00:00")
-            print(datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180))
-            if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=180) < datetime.datetime.utcnow().astimezone():
-                add_role = False
-            else:
-                add_role = True
-                break
-        if not add_role:
-            for user_doc in user_collection.find({}):
-                new_doc = user_doc.pop("_id")
-                str_id_user = str(new_doc)
-                user_doc["_id"] = str_id_user
-                minn_filte1 = {"User ID": str_id_user}
-                add_user = True
-                for man_doc in manning_collection.find(minn_filte1):
-                    if man_doc:
-                        date = man_doc["Job end date"].replace("Z", "+00:00")
-                        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
-                            add_user = False
-                            break
-                if add_user:
-                    users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
-                        
-            data_staffingForm += [{"Role":doc , "User": users_list}]
-    print(data_staffingForm)
+    
+    data_staffingForm = getFreeUsers()
     response = flask.jsonify({"staffingForm": data_staffingForm})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
+
+
+def getFreeUsers():
+    data_staffingForm = []
+        
+    daysForThreshold = 180 # take from user?    
+    now = datetime.datetime.utcnow().astimezone()
+    threshold = now + datetime.timedelta(days=daysForThreshold)
+    
+    manning = manning_collection.find({})
+    
+    userToDate = {}
+    roleToDate = {}
+    for man_doc in manning:
+        userToDate[man_doc['User ID']] = man_doc['Job end date']
+        roleToDate[man_doc['Role ID']] = man_doc['Job end date']
+    
+    roles = roles_collection.find({})
+    freeRolesToEndDate = {}
+    free_roles_list = []
+    
+    for role_doc in roles:
+        new_role_doc = role_doc.pop("_id")
+        str_id_role = str(new_role_doc)
+        role_doc["_id"] = str_id_role
+        roleID = role_doc['_id']
+        endDateStr = roleToDate.get(roleID, str(now))
+        endDate = stringToDate(endDateStr)
+        if endDate < threshold:
+            freeRolesToEndDate[roleID] = endDate
+            free_roles_list += [role_doc]
+    
+    users = user_collection.find({})
+    freeUsersToEndDate = {}
+    free_users_list = []
+    for user_doc in users:
+        new_user_doc = user_doc.pop("_id")
+        str_id_user = str(new_user_doc)
+        user_doc["_id"] = str_id_user
+        userID = user_doc['_id']
+        # Remove irrelevant fields from the document
+        user_doc.pop('password')   
+        if 'isAdmin' in user_doc:
+            user_doc.pop('isAdmin')
+        if 'orderedOptionalRoles' in user_doc:
+            user_doc.pop('orderedOptionalRoles')
+        endDateStr = userToDate.get(userID, str(now))
+        endDate = stringToDate(endDateStr)
+        if endDate < threshold:
+            freeUsersToEndDate[userID] = endDate
+            free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
+    
+    for free_role in free_roles_list:
+        data_staffingForm += [{"Role":free_role , "User": free_users_list}]
+    return data_staffingForm
 
 
 #Placement Meetings
@@ -382,6 +433,18 @@ def role(key):
     if request.method == "GET":
         role_=roles_collection.find_one({"_id":ObjectId(key)})
         response = flask.jsonify(dict(key = str(role_.pop("_id")),**role_))
+    else:
+        updatedRole = request.data
+        roleStr = updatedRole.decode("utf-8")
+        newRoleJson = json.loads(roleStr)
+        print('newJsonRole: ', newRoleJson)
+        roles_collection.update_one({'_id': ObjectId(key)}, {'$set': {
+            'Title': newRoleJson['Title'], 'Duration': newRoleJson['Duration'],
+            'Description': newRoleJson['Description']
+        }})
+        found = roles_collection.find_one({'_id': ObjectId(key)})
+        print('found: ', found)
+        response = 'successfully updated!'
     return response
 
 
@@ -417,17 +480,26 @@ def roles():
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
 @login_required
 def smile(key):
-    return(flask.jsonify({"smile": get_smile(key)}))
+    smiley, last_role = get_smile_and_last_role(key)
+    return(flask.jsonify({"smile": smiley}))
 
 # recive user_id and returns if the user should be worry or not (smile or not)
-def get_smile(key):
-    for doc in manning_collection.find({"User ID": key}):
-        date = doc["Job end date"].replace("Z", "+00:00")
+def get_smile_and_last_role(key):
+    smile = False
+    lastRole = None
+    userRoles = manning_collection.find({'User ID': key})
+    if userRoles:
+        userRoles = list(userRoles)
+        if len(userRoles) > 0:
+            sortedUserRoles = sorted(userRoles, key=lambda x: x['Job end date'], reverse=True)
+            lastRole = sortedUserRoles[0]
+            date = datetime.datetime.fromisoformat(lastRole['Job end date'].replace("Z", "+00:00"))
+            
+            if date - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
+                print("happy: ", date)
+                smile = True
         
-        if datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90) >= datetime.datetime.utcnow().astimezone():
-            print("sad: ", datetime.datetime.fromisoformat(date) - datetime.timedelta(days=90))
-            return True
-    return False
+    return smile, lastRole
 
 #user<key>
 @app.route("/api/users/<key>", methods=["GET", "POST"])
@@ -479,7 +551,57 @@ def users():
     
     return response
 
+@app.get("/api/rolesHistory/<key>")
+@login_required
+def getRolesHistory(key):
+    rolesHistory = manning_collection.find({'User ID': key})
+    if rolesHistory:
+       sortedRolesHistory = getHistory(key)
+    print('rolesHistory: ', sortedRolesHistory)
+    return flask.jsonify({"rolesHistory": sortedRolesHistory})
+
+def getHistory(key):
+    rolesHistory = manning_collection.find({'User ID': key})
+    if rolesHistory:
+        rolesHistory = list(rolesHistory)
+        sortedRolesHistory = sorted(rolesHistory, key=lambda x: x['Job end date'], reverse=True)
+        for role in sortedRolesHistory:
+            newRole = role.pop("_id")
+            strID = str(newRole)
+            role['_id'] = strID
+            job_staffing = role['Date of staffing'].replace("Z", "+00:00")
+            job_staffing = datetime.datetime.fromisoformat(job_staffing)
+            job_staffing_format = job_staffing.strftime("%d/%m/%Y")
+            role['Date of staffing'] =  job_staffing_format
+            job_end_date = role["Job end date"].replace("Z", "+00:00")
+            job_end_date = datetime.datetime.fromisoformat(job_end_date)
+            job_end_date_format = job_end_date.strftime("%d/%m/%Y")
+            role["Job end date"] = job_end_date_format
+        addRolesTitle(sortedRolesHistory)
+    return sortedRolesHistory
+    
+
+def addRolesTitle(rolesHistory):
+    for role in rolesHistory:
+        roleInRoles = roles_collection.find_one({'_id': ObjectId(role['Role ID'])})
+        roleTitle = roleInRoles['Title']
+        role['Title'] = roleTitle
+
+@app.get('/api/getFileOfRole/<key>')
+@login_required
+def getFileOfRole(key):
+    print('key: ', key)
+    role = manning_collection.find_one({'_id': ObjectId(key)})
+    path = role['file_path']
+    pdfFile = open(path)
+    return pdfFile
+
+
+def get_constraits():
+    return constraints_collection.find({})
+        
 
 if __name__ == "__main__":
     logbook.StreamHandler(sys.stdout).push_application() 
+    # app.run(ssl_context=('cert.pem', 'key.pem'))
     app.run(debug=True)
