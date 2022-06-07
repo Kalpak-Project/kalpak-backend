@@ -12,6 +12,7 @@ import ssl
 import datetime
 import logbook 
 import sys
+import copy
 
 logger=logbook.Logger(__name__)
 
@@ -270,7 +271,6 @@ def manning():
         manning = {}
         for field in newManningJson:
             manning[field["key"]] = field["value"]
-
         print("addManning: ", manning)
         manning_collection.insert_one(manning)
         return response
@@ -350,8 +350,22 @@ def getRolesAndFreeUsers():
     userToDate = {}
     roleToDate = {}
     for man_doc in manning:
-        userToDate[man_doc['User ID']] = man_doc['Job end date']
-        roleToDate[man_doc['Role ID']] = man_doc['Job end date']
+        addToUsers = False
+        if man_doc['User ID'] in userToDate:
+            if userToDate[man_doc['User ID']] < man_doc['Job end date']:
+                addToUsers = True
+        else:
+            addToUsers = True
+        addToRoles = False         
+        if man_doc['Role ID'] in roleToDate:
+            if roleToDate[man_doc['Role ID']] < man_doc['Job end date']:
+                addToRoles = True
+        else:
+            addToRoles = True
+        if addToUsers:
+            userToDate[man_doc['User ID']] = man_doc['Job end date']
+        if addToRoles:
+            roleToDate[man_doc['Role ID']] = man_doc['Job end date']
     
     roles = roles_collection.find({})
     freeRolesToEndDate = {}
@@ -362,34 +376,85 @@ def getRolesAndFreeUsers():
         str_id_role = str(new_role_doc)
         role_doc["_id"] = str_id_role
         roleID = role_doc['_id']
-        endDateStr = roleToDate.get(roleID, str(now))
-        endDate = stringToDate(endDateStr)
-        if endDate < threshold:
-            freeRolesToEndDate[roleID] = endDate
+        roleEndDateStr = roleToDate.get(roleID, str(now))
+        roleEndDate = stringToDate(roleEndDateStr)
+        if roleEndDate < threshold:
+            freeRolesToEndDate[roleID] = roleEndDateStr
+            role_doc['endDate'] = roleEndDate
             free_roles_list += [role_doc]
     
     users = user_collection.find({})
-    freeUsersToEndDate = {}
-    free_users_list = []
-    for user_doc in users:
-        new_user_doc = user_doc.pop("_id")
-        str_id_user = str(new_user_doc)
-        user_doc["_id"] = str_id_user
-        userID = user_doc['_id']
-        # Remove irrelevant fields from the document
-        user_doc.pop('password')   
-        if 'isAdmin' in user_doc:
-            user_doc.pop('isAdmin')
-        if 'orderedOptionalRoles' in user_doc:
-            user_doc.pop('orderedOptionalRoles')
-        endDateStr = userToDate.get(userID, str(now))
-        endDate = stringToDate(endDateStr)
-        if endDate < threshold:
-            freeUsersToEndDate[userID] = endDate
-            free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
+    # freeUsersToEndDate = {}
+    # free_users_list = []
+    # for user_doc in users:
+    #     new_user_doc = user_doc.pop("_id")
+    #     str_id_user = str(new_user_doc)
+    #     user_doc["_id"] = str_id_user
+    #     userID = user_doc['_id']
+    #     # Remove irrelevant fields from the document
+    #     user_doc.pop('password')   
+    #     if 'isAdmin' in user_doc:
+    #         user_doc.pop('isAdmin')
+    #     if 'orderedOptionalRoles' in user_doc:
+    #         user_doc.pop('orderedOptionalRoles')
+    #     endDateStr = userToDate.get(userID, str(now))
+    #     endDate = stringToDate(endDateStr)
+    #     if endDate < threshold:
+    #         freeUsersToEndDate[userID] = endDate
+    #         free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
     
     for free_role in free_roles_list:
-        data_staffingForm += [{"Role":free_role , "User": free_users_list}]
+        free_users = []
+        usersList = list(copy.deepcopy(users))
+        for user_doc in usersList:
+            addUser = True
+            new_user_doc = user_doc.pop("_id")
+            str_id_user = str(new_user_doc)
+            user_doc["_id"] = str_id_user
+            userID = user_doc['_id']
+            userEndDateStr = userToDate.get(userID, str(now - datetime.timedelta(days=1000)))
+            userEndDate = stringToDate(userEndDateStr)
+            roleEndDateStr = freeRolesToEndDate.get(free_role['_id'], str(now))
+            roleEndDate = stringToDate(roleEndDateStr)
+            # TODO fix this place and all this function.
+            if free_role['_id'] == '629cdffb6466e86cd55215b9':
+                print('role end date: ', roleEndDateStr)
+                print('user date: ', userEndDateStr)
+            if userEndDate < threshold and (userEndDate + datetime.timedelta(days=90) < roleEndDate or roleEndDate < now):
+                # Remove irrelevant fields from the document
+                user_doc.pop('password')
+                if 'isAdmin' in user_doc:
+                    user_doc.pop('isAdmin')
+                if 'orderedOptionalRoles' in user_doc:
+                    user_doc.pop('orderedOptionalRoles')
+                if 'Constraints' in free_role:
+                    userManning = getHistory(user_doc['_id'])
+                    rolesIdList = list(map(lambda man: man['Role ID'], userManning))
+                    for conId in free_role['Constraints']:
+                        con = constraints_collection.find_one({'_id': ObjectId(conId)})
+                        if con['requirement'] not in rolesIdList:
+                            addUser = False
+                            break
+            else:
+                addUser = False
+            if addUser:
+                free_users += [dict(key=str(user_doc["_id"]),**user_doc)]
+        data_staffingForm += [{"Role":free_role , "User": free_users}]
+    # for free_role in free_roles_list:
+    #     free_users = list(copy.deepcopy(free_users_list))
+    #     if 'Constraints' in free_role:
+    #         for user in free_users:
+    #             userRoles = getHistory(user['_id'])
+    #             rolesIdList = list(map(lambda role: role['_id'], userRoles))
+    #             if len(rolesIdList) == 0:
+    #                 free_users.remove(user)
+    #                 continue
+    #             for conId in free_role['Constraints']:
+    #                 con = constraints_collection.find_one({'_id': ObjectId(conId)})
+    #                 if con['requirement'] not in rolesIdList:
+    #                     free_users.remove(user)
+    #                     break
+    #     data_staffingForm += [{"Role":free_role , "User": free_users}]
     return data_staffingForm
 
 
@@ -574,8 +639,8 @@ def getHistory(key):
             job_end_date_format = job_end_date.strftime("%d/%m/%Y")
             role["Job end date"] = job_end_date_format
         addRolesTitle(sortedRolesHistory)
-    return sortedRolesHistory
-    
+        return sortedRolesHistory
+    return rolesHistory
 
 def addRolesTitle(rolesHistory):
     for role in rolesHistory:

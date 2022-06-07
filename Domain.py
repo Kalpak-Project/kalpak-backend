@@ -1,5 +1,3 @@
-import copy
-
 # Class for the domain of each variable
 class Domain:
 
