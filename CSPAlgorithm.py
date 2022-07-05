@@ -39,8 +39,15 @@ class csp:
     def getDomain(self, var):
         # need to add here domain reduction for all relevant Domains.
         # need to make sure that send the values by value and not by reference.
-        valuesCopy = dict(copy.deepcopy(self.values))
-        return Domain(valuesCopy)
+        dom = {}
+        for role in self.freeUsersAndRoles:
+            role_id = role['Role']['_id']
+            if role_id == var:
+                users_list = role['User']
+                for user in users_list:
+                    dom[user['_id']] = user
+        
+        return Domain(dom)
     
     def getConstraints(self):
         constraints = get_constraits()
@@ -111,7 +118,7 @@ result = aaa.backtracking(aaa.currentAssignment)
 bbb = []
 for attr in result:
     bbb += [(attr, result[attr])]
-ccc = list(map(lambda ass: {aaa.vars[ass[0]].var['Title']: aaa.values[ass[1]]['user_name']}, bbb))
+ccc = list(map(lambda ass: {aaa.vars[ass[0]].var['Title']: ass[1]}, bbb))
 print(ccc)  
 
         

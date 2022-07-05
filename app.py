@@ -338,7 +338,7 @@ def staffingForm():
     return response
 
 
-# return all free roles and free users. list of dicts: [{'Role': roleDoc, 'User': [freeUsers] }]
+# return all free roles and free users. list of dicts: [{'Role': roleDoc, 'User': [freeUsers]}]
 def getRolesAndFreeUsers():
     data_staffingForm = []
     daysForThreshold = 180 # take from user?    
@@ -384,6 +384,8 @@ def getRolesAndFreeUsers():
             free_roles_list += [role_doc]
     
     users = user_collection.find({})
+    freeUsersToEndDate = {}
+    free_users_list = []
     # freeUsersToEndDate = {}
     # free_users_list = []
     # for user_doc in users:
@@ -402,11 +404,27 @@ def getRolesAndFreeUsers():
     #     if endDate < threshold:
     #         freeUsersToEndDate[userID] = endDate
     #         free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
-    
+    for user_doc in users:
+        new_user_doc = user_doc.pop("_id")
+        str_id_user = str(new_user_doc)
+        user_doc["_id"] = str_id_user
+        userID = user_doc['_id']
+        userEndDateStr = userToDate.get(userID, str(now))
+        userEndDate = stringToDate(userEndDateStr)
+        if userEndDate < threshold:
+            freeUsersToEndDate[userID] = userEndDateStr
+            user_doc['endDate'] = userEndDate
+            # Remove irrelevant fields from the document
+            user_doc.pop('password')
+            if 'isAdmin' in user_doc:
+                user_doc.pop('isAdmin')
+            if 'orderedOptionalRoles' in user_doc:
+                user_doc.pop('orderedOptionalRoles')
+            free_users_list += [user_doc]
+        
     for free_role in free_roles_list:
         free_users = []
-        usersList = list(copy.deepcopy(users))
-        for user_doc in usersList:
+        for user_doc in free_users_list:
             addUser = True
             new_user_doc = user_doc.pop("_id")
             str_id_user = str(new_user_doc)
@@ -414,19 +432,9 @@ def getRolesAndFreeUsers():
             userID = user_doc['_id']
             userEndDateStr = userToDate.get(userID, str(now - datetime.timedelta(days=1000)))
             userEndDate = stringToDate(userEndDateStr)
-            roleEndDateStr = freeRolesToEndDate.get(free_role['_id'], str(now))
+            roleEndDateStr = freeUsersToEndDate.get(free_role['_id'], str(now))
             roleEndDate = stringToDate(roleEndDateStr)
-            # TODO fix this place and all this function.
-            if free_role['_id'] == '629cdffb6466e86cd55215b9':
-                print('role end date: ', roleEndDateStr)
-                print('user date: ', userEndDateStr)
-            if userEndDate < threshold and (userEndDate + datetime.timedelta(days=90) < roleEndDate or roleEndDate < now):
-                # Remove irrelevant fields from the document
-                user_doc.pop('password')
-                if 'isAdmin' in user_doc:
-                    user_doc.pop('isAdmin')
-                if 'orderedOptionalRoles' in user_doc:
-                    user_doc.pop('orderedOptionalRoles')
+            if userEndDate - datetime.timedelta(days=90) < roleEndDate or roleEndDate < now:
                 if 'Constraints' in free_role:
                     userManning = getHistory(user_doc['_id'])
                     rolesIdList = list(map(lambda man: man['Role ID'], userManning))
