@@ -8,11 +8,10 @@ from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
 from werkzeug.exceptions import Unauthorized
-import ssl
 import datetime
 import logbook 
 import sys
-import copy
+import CSPAlgorithm
 
 logger=logbook.Logger(__name__)
 
@@ -76,7 +75,6 @@ def register():
 
     # need to fix the check if user already exists in the table
     # check if user already exists in the table
-
     newUser = request.data
     userStr = newUser.decode("utf-8")
     newUserJson = json.loads(userStr)
@@ -275,7 +273,6 @@ def manning():
         manning_collection.insert_one(manning)
         return response
 
-    
 
 @app.route("/api/selectedUserRole", methods=["POST"])
 @login_required
@@ -333,7 +330,13 @@ def staffingForm():
         raise Unauthorized()
     response = ""
     data_staffingForm = getRolesAndFreeUsers()
-    response = flask.jsonify({"staffingForm": data_staffingForm})
+    csp_res = CSPAlgorithm.run_csp()
+    change_csp_to_string = {}
+    for role in csp_res:
+        user = user_collection.find_one({'_id': ObjectId(csp_res[role])})
+        user_title = user['Private Name'] + ' ' + user['Family Name']
+        change_csp_to_string[role] = user_title
+    response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
@@ -386,24 +389,7 @@ def getRolesAndFreeUsers():
     users = user_collection.find({})
     freeUsersToEndDate = {}
     free_users_list = []
-    # freeUsersToEndDate = {}
-    # free_users_list = []
-    # for user_doc in users:
-    #     new_user_doc = user_doc.pop("_id")
-    #     str_id_user = str(new_user_doc)
-    #     user_doc["_id"] = str_id_user
-    #     userID = user_doc['_id']
-    #     # Remove irrelevant fields from the document
-    #     user_doc.pop('password')   
-    #     if 'isAdmin' in user_doc:
-    #         user_doc.pop('isAdmin')
-    #     if 'orderedOptionalRoles' in user_doc:
-    #         user_doc.pop('orderedOptionalRoles')
-    #     endDateStr = userToDate.get(userID, str(now))
-    #     endDate = stringToDate(endDateStr)
-    #     if endDate < threshold:
-    #         freeUsersToEndDate[userID] = endDate
-    #         free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
+ 
     for user_doc in users:
         new_user_doc = user_doc.pop("_id")
         str_id_user = str(new_user_doc)
@@ -448,21 +434,7 @@ def getRolesAndFreeUsers():
             if addUser:
                 free_users += [dict(key=str(user_doc["_id"]),**user_doc)]
         data_staffingForm += [{"Role":free_role , "User": free_users}]
-    # for free_role in free_roles_list:
-    #     free_users = list(copy.deepcopy(free_users_list))
-    #     if 'Constraints' in free_role:
-    #         for user in free_users:
-    #             userRoles = getHistory(user['_id'])
-    #             rolesIdList = list(map(lambda role: role['_id'], userRoles))
-    #             if len(rolesIdList) == 0:
-    #                 free_users.remove(user)
-    #                 continue
-    #             for conId in free_role['Constraints']:
-    #                 con = constraints_collection.find_one({'_id': ObjectId(conId)})
-    #                 if con['requirement'] not in rolesIdList:
-    #                     free_users.remove(user)
-    #                     break
-    #     data_staffingForm += [{"Role":free_role , "User": free_users}]
+ 
     return data_staffingForm
 
 
@@ -601,14 +573,6 @@ def users():
     else:
         
     # need to fix the check if user already exists in the table
-        #  user = request.data
-        # found = user_collection.find_one({"user_name": user[0].user_name}, {"_id": 0})
-        
-        # if found:
-        #     return jsonify(
-        #         {"status": 401, "reason": "Username already exist. Try another user name."})
-        # else:
-
         newUser = request.data
         userStr = newUser.decode("utf-8")
         newUserJson = json.loads(userStr)

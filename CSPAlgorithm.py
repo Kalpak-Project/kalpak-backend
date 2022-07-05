@@ -1,9 +1,8 @@
 import copy
-from unittest import result
 from Domain import Domain
 from RoleVar import RoleVar
 from Constraint import *
-from app import getUsersOrderedRoles, getRolesAndFreeUsers, get_constraits
+from app import getRolesAndFreeUsers, get_constraits
 
 class csp:
     
@@ -111,14 +110,17 @@ class csp:
             if v != var:
                 self.vars[v].getDomain().addToDomain(value, valDoc)
     
-    
 
-aaa = csp()
-result = aaa.backtracking(aaa.currentAssignment)
-bbb = []
-for attr in result:
-    bbb += [(attr, result[attr])]
-ccc = list(map(lambda ass: {aaa.vars[ass[0]].var['Title']: ass[1]}, bbb))
-print(ccc)  
+def run_csp():
+    csp_solver = csp()
+    return csp_solver.backtracking(csp_solver.currentAssignment)
+
+# aaa = csp()
+# result = aaa.backtracking(aaa.currentAssignment)
+# bbb = []
+# for attr in result:
+#     bbb += [(attr, result[attr])]
+# ccc = list(map(lambda ass: {aaa.vars[ass[0]].var['Title']: ass[1]}, bbb))
+# print(ccc)  
 
         
