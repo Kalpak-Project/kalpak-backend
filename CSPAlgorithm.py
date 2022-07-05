@@ -86,8 +86,14 @@ class csp:
     # Return a vars that has not yet been assigned
     def getUnassignedVar(self, assignments):
         unassignedVars = list(filter(lambda x: x not in assignments, self.vars))
+        sortedDomain = self.sortByMRV(unassignedVars)
         return unassignedVars[0]
-    
+
+    # Sort the array of characters received according to the heuristic 'minimum remaining values'
+    def sortByMRV(self, unassignedVars):
+        sortedDomains = sorted(unassignedVars, key=lambda x: len(self.vars[x].domain.domain))
+        return sortedDomains
+        
     # Check whether the new assignment satisfies all the constraints
     def checkConsistency(self, ass, newVar, newValue):
         assCopy = dict(copy.deepcopy(ass))

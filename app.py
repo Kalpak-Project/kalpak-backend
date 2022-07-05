@@ -12,6 +12,7 @@ import datetime
 import logbook 
 import sys
 import CSPAlgorithm
+import threading
 
 logger=logbook.Logger(__name__)
 
@@ -329,16 +330,44 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    data_staffingForm = getRolesAndFreeUsers()
+    result = staffingMultyThreaded()
+    
+    data_staffingForm = result[0]
+    change_csp_to_string = result[1]
+    # data_staffingForm = getRolesAndUsers()
+    # change_csp_to_string = cspAlgorithm()
+    response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
+
+
+def cspAlgorithm(res):
     csp_res = CSPAlgorithm.run_csp()
     change_csp_to_string = {}
     for role in csp_res:
         user = user_collection.find_one({'_id': ObjectId(csp_res[role])})
         user_title = user['Private Name'] + ' ' + user['Family Name']
         change_csp_to_string[role] = user_title
-    response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
+    # return change_csp_to_string
+    res[1] = change_csp_to_string
+
+def getRolesAndUsers(res):
+    # return getRolesAndFreeUsers()
+    res[0] = getRolesAndFreeUsers()
+
+def staffingMultyThreaded():
+    res = [None] * 2
+    
+    rolesAndUsers = threading.Thread(target=getRolesAndUsers, args=(res,))
+    csp = threading.Thread(target=cspAlgorithm, args=(res,))
+    
+    rolesAndUsers.start()
+    csp.start()
+    
+    rolesAndUsers.join()
+    csp.join()
+    
+    return res
 
 
 # return all free roles and free users. list of dicts: [{'Role': roleDoc, 'User': [freeUsers]}]
@@ -416,9 +445,9 @@ def getRolesAndFreeUsers():
             str_id_user = str(new_user_doc)
             user_doc["_id"] = str_id_user
             userID = user_doc['_id']
-            userEndDateStr = userToDate.get(userID, str(now - datetime.timedelta(days=1000)))
+            userEndDateStr = userToDate.get(userID, str(now - datetime.timedelta(days=180)))
             userEndDate = stringToDate(userEndDateStr)
-            roleEndDateStr = freeUsersToEndDate.get(free_role['_id'], str(now))
+            roleEndDateStr = freeUsersToEndDate.get(free_role['_id'], str(now - datetime.timedelta(days=180)))
             roleEndDate = stringToDate(roleEndDateStr)
             if userEndDate - datetime.timedelta(days=90) < roleEndDate or roleEndDate < now:
                 if 'Constraints' in free_role:
@@ -433,7 +462,7 @@ def getRolesAndFreeUsers():
                 addUser = False
             if addUser:
                 free_users += [dict(key=str(user_doc["_id"]),**user_doc)]
-        data_staffingForm += [{"Role":free_role , "User": free_users}]
+        data_staffingForm += [{"Role": free_role , "User": free_users}]
  
     return data_staffingForm
 
