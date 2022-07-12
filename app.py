@@ -529,7 +529,8 @@ def roles():
         raise Unauthorized()
     if request.method == "GET":
         data_roles = []
-        for doc in roles_collection.find({}, {}):
+        for doc in roles_collection.find({}):
+            doc['Constraints'] = getConstraintsNames(doc)
             data_roles +=[dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"roles": data_roles})
@@ -547,6 +548,17 @@ def roles():
         roles_collection.insert_one(role)
 
     return response
+
+def getConstraintsNames(role):
+    if 'Constraints' in role:
+        cons = role['Constraints']
+        cons_names = []
+        for con in cons:
+            con_doc = constraints_collection.find_one({'_id': ObjectId(con)})
+            role = roles_collection.find_one({'_id': ObjectId(con_doc['requirement'])})
+            cons_names += [role['Title']]
+        return cons_names
+        
 
 #smile
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
