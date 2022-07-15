@@ -6,8 +6,8 @@ from app import getRolesAndFreeUsers, get_constraits
 
 class csp:
     
-    def __init__(self):
-        self.freeUsersAndRoles = getRolesAndFreeUsers()
+    def __init__(self, rolesAndUsers):
+        self.freeUsersAndRoles = rolesAndUsers
         self.values = self.getRemovedIrrelevantFields() # dicts of {userId: userDoc}        
         self.vars = self.getVars([role['Role'] for role in self.freeUsersAndRoles]) # dict of {roleId: RoleVar}
         self.constraints = self.getConstraints() # list of [Constraint]
@@ -17,7 +17,12 @@ class csp:
         # self.score = 0
     
     def getRemovedIrrelevantFields(self):
-        free = self.freeUsersAndRoles[0]['User'] # all fields of freeUsers are equal. that why we chose [0]
+        # TODO fix this
+        users = []
+        for role in self.freeUsersAndRoles:
+            users += role['User']
+        free = list({user['_id']: user for user in users}.values())
+        print("Free: ", free)
         freeUsers = {}
         for user in free:
             user.pop('Family Name')
@@ -75,6 +80,7 @@ class csp:
         for val in dom:
             if self.checkConsistency(assignments, var, val):
                 assignments[var] = val
+                print("assignment: ", assignments)
                 self.updateDomains(val)
                 res = self.backtracking(assignments)
                 if res != -1:
@@ -93,6 +99,7 @@ class csp:
     def sortByMRV(self, unassignedVars):
         sortedDomains = sorted(unassignedVars, key=lambda x: len(self.vars[x].domain.domain))
         return sortedDomains
+    
         
     # Check whether the new assignment satisfies all the constraints
     def checkConsistency(self, ass, newVar, newValue):
@@ -117,8 +124,8 @@ class csp:
                 self.vars[v].getDomain().addToDomain(value, valDoc)
     
 
-def run_csp():
-    csp_solver = csp()
+def run_csp(rolesAndUsers):
+    csp_solver = csp(rolesAndUsers)
     return csp_solver.backtracking(csp_solver.currentAssignment)
 
 # aaa = csp()

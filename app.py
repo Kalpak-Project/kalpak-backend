@@ -333,7 +333,10 @@ def staffingForm():
     result = staffingMultyThreaded()
     
     data_staffingForm = result[0]
-    change_csp_to_string = result[1]
+    if result[1] == -1:
+        change_csp_to_string = False
+    else:
+        change_csp_to_string = result[1]
     # data_staffingForm = getRolesAndUsers()
     # change_csp_to_string = cspAlgorithm()
     response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
@@ -341,25 +344,26 @@ def staffingForm():
     return response
 
 
-def cspAlgorithm(res):
-    csp_res = CSPAlgorithm.run_csp()
-    change_csp_to_string = {}
-    for role in csp_res:
-        user = user_collection.find_one({'_id': ObjectId(csp_res[role])})
-        user_title = user['Private Name'] + ' ' + user['Family Name']
-        change_csp_to_string[role] = user_title
-    # return change_csp_to_string
-    res[1] = change_csp_to_string
+def cspAlgorithm(res, rolesAndUsers):
+    csp_res = CSPAlgorithm.run_csp(rolesAndUsers)
+    if csp_res == -1:
+        res[1] = -1
+    else:
+        change_csp_to_string = {}
+        for role in csp_res:
+            user = user_collection.find_one({'_id': ObjectId(csp_res[role])})
+            user_title = user['Private Name'] + ' ' + user['Family Name']
+            change_csp_to_string[role] = user_title
+        res[1] = change_csp_to_string
 
-def getRolesAndUsers(res):
-    # return getRolesAndFreeUsers()
-    res[0] = getRolesAndFreeUsers()
+def getRolesAndUsers(res, rolesAndUsers):
+    res[0] = rolesAndUsers
 
 def staffingMultyThreaded():
     res = [None] * 2
-    
-    rolesAndUsers = threading.Thread(target=getRolesAndUsers, args=(res,))
-    csp = threading.Thread(target=cspAlgorithm, args=(res,))
+    rolesAndUsersList = getRolesAndFreeUsers()
+    rolesAndUsers = threading.Thread(target=getRolesAndUsers, args=(res, rolesAndUsersList))
+    csp = threading.Thread(target=cspAlgorithm, args=(res, rolesAndUsersList))
     
     rolesAndUsers.start()
     csp.start()
@@ -510,9 +514,12 @@ def role(key):
         roleStr = updatedRole.decode("utf-8")
         newRoleJson = json.loads(roleStr)
         print('newJsonRole: ', newRoleJson)
+        cons = []
+        for con in newRoleJson['Constraints']:
+            cons += [getConstraintID(con)]
         roles_collection.update_one({'_id': ObjectId(key)}, {'$set': {
             'Title': newRoleJson['Title'], 'Duration': newRoleJson['Duration'],
-            'Description': newRoleJson['Description']
+            'Description': newRoleJson['Description'], 'Constraints': cons
         }})
         found = roles_collection.find_one({'_id': ObjectId(key)})
         print('found: ', found)
@@ -540,14 +547,57 @@ def roles():
         newRole = request.data
         roleStr = newRole.decode("utf-8")
         newRoleJson = json.loads(roleStr)
+        print('aaaaa: ', newRoleJson)
         role = {}
         for field in newRoleJson:
-            role[field["key"]] = field["value"]
+            if field["key"] == 'Constraints':
+                cons = []
+                if field['value']:
+                    for con in field['value']:
+                        cons += [getConstraintID(con)]
+                role[field["key"]] = cons
+            else:
+                role[field["key"]] = field["value"]
 
         print(role)
-        roles_collection.insert_one(role)
+        res = roles_collection.insert_one(role)
+        constraint = {'type': "TrainingRequired", 'requirement': str(res.inserted_id)}
+        constraints_collection.insert_one(constraint)
 
     return response
+
+@app.route("/api/constraints", methods=["GET", "POST"])
+@login_required
+def constraints():
+    response = ""
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
+    if request.method == "GET":
+        data_cons = []
+        for doc in constraints_collection.find({}):
+            doc['role_title'] = getRoleTitle(doc['requirement'])
+            data_cons +=[dict(key = str(doc.pop("_id")),**doc)]
+
+        response = flask.jsonify({"cons": data_cons})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+
+    else:
+        newCon = request.data
+        conStr = newCon.decode("utf-8")
+        newConJson = json.loads(conStr)
+        con = {}
+        for field in newConJson:
+            con[field["key"]] = field["value"]
+
+        print(con)
+        constraints_collection.insert_one(con)
+
+    return response
+
+def getRoleTitle(roleId):
+    return roles_collection.find_one({'_id': ObjectId(roleId)})['Title']
+    
 
 def getConstraintsNames(role):
     if 'Constraints' in role:
@@ -558,7 +608,11 @@ def getConstraintsNames(role):
             role = roles_collection.find_one({'_id': ObjectId(con_doc['requirement'])})
             cons_names += [role['Title']]
         return cons_names
-        
+
+def getConstraintID(role_title):
+    role_doc = roles_collection.find_one({'Title': role_title})
+    con = constraints_collection.find_one({'requirement': str(role_doc['_id'])})
+    return str(con['_id'])
 
 #smile
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
