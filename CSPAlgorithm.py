@@ -25,11 +25,6 @@ class csp:
         print("Free: ", free)
         freeUsers = {}
         for user in free:
-            user.pop('Family Name')
-            user.pop('Private Name')
-            user.pop('Personal ID')
-            user.pop('key')
-            user.pop('Employer')
             freeUsers[user['_id']] = user
         return freeUsers
     
@@ -93,7 +88,7 @@ class csp:
     def getUnassignedVar(self, assignments):
         unassignedVars = list(filter(lambda x: x not in assignments, self.vars))
         sortedDomain = self.sortByMRV(unassignedVars)
-        return unassignedVars[0]
+        return sortedDomain[0]
 
     # Sort the array of characters received according to the heuristic 'minimum remaining values'
     def sortByMRV(self, unassignedVars):

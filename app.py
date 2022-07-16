@@ -313,10 +313,12 @@ def selectedUserRole():
             print("user:", user)
             staffingsList += [{"User ID": user["User ID"], "Role ID": role["Role ID"],
                                "Date of staffing": str(dateOfStaffingOfCurrent), "Job end date": str(jobEndDateOfCurrent)}]
-    
-    manning_collection.insert_many(staffingsList)
-    print("added to manning: ", staffingsList)
-    response = jsonify({"success": "added into manning!"})
+    if len(staffingForm) > 0:
+        manning_collection.insert_many(staffingsList)
+        print("added to manning: ", staffingsList)
+        response = jsonify({"success": "added into manning!"})
+    else:
+        response = jsonify({"warning": "not found manning to add!"})
     return response
     
 def stringToDate(str):
@@ -515,8 +517,9 @@ def role(key):
         newRoleJson = json.loads(roleStr)
         print('newJsonRole: ', newRoleJson)
         cons = []
-        for con in newRoleJson['Constraints']:
-            cons += [getConstraintID(con)]
+        if newRoleJson['Constraints'][0]:
+            for con in newRoleJson['Constraints']:
+                cons += [getConstraintID(con)]
         roles_collection.update_one({'_id': ObjectId(key)}, {'$set': {
             'Title': newRoleJson['Title'], 'Duration': newRoleJson['Duration'],
             'Description': newRoleJson['Description'], 'Constraints': cons
@@ -552,7 +555,7 @@ def roles():
         for field in newRoleJson:
             if field["key"] == 'Constraints':
                 cons = []
-                if field['value']:
+                if field['value'] != None:
                     for con in field['value']:
                         cons += [getConstraintID(con)]
                 role[field["key"]] = cons
