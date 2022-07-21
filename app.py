@@ -541,6 +541,8 @@ def roles():
         role = {}
         for field in newRoleJson:
             if field["key"] == 'Constraints':
+                if field["value"] == None:
+                    continue
                 cons = []
                 if field['value'] != None:
                     for con in field['value']:
@@ -576,8 +578,11 @@ def constraints():
         newCon = request.data
         conStr = newCon.decode("utf-8")
         newConJson = json.loads(conStr)
+        print("new con json: ", newConJson )
         con = {}
         for field in newConJson:
+            # if field["key"] == "Constraints" and field["value"] == None:
+            #     continue
             con[field["key"]] = field["value"]
 
         print(con)
