@@ -13,6 +13,7 @@ import logbook
 import sys
 import CSPAlgorithm
 import threading
+from collections import defaultdict
 
 logger=logbook.Logger(__name__)
 
@@ -143,7 +144,7 @@ def logout():
 def optional_roles(key):
     response = ""
     if request.method == "GET":
-        userRoles = manning_collection.find({"User ID":key})
+        userRoles = manning_collection.find({"User ID": key})
         
         # check if user has a manning
         if userRoles:
@@ -313,7 +314,7 @@ def selectedUserRole():
             print("user:", user)
             staffingsList += [{"User ID": user["User ID"], "Role ID": role["Role ID"],
                                "Date of staffing": str(dateOfStaffingOfCurrent), "Job end date": str(jobEndDateOfCurrent)}]
-    if len(staffingForm) > 0:
+    if len(staffingsList) > 0:
         manning_collection.insert_many(staffingsList)
         print("added to manning: ", staffingsList)
         response = jsonify({"success": "added into manning!"})
@@ -332,48 +333,25 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    result = staffingMultyThreaded()
-    
-    data_staffingForm = result[0]
-    if result[1] == -1:
-        change_csp_to_string = False
-    else:
-        change_csp_to_string = result[1]
-    # data_staffingForm = getRolesAndUsers()
-    # change_csp_to_string = cspAlgorithm()
+
+    data_staffingForm = getRolesAndFreeUsers()
+    change_csp_to_string = cspAlgorithm(data_staffingForm)
     response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
-def cspAlgorithm(res, rolesAndUsers):
+def cspAlgorithm(rolesAndUsers):
     csp_res = CSPAlgorithm.run_csp(rolesAndUsers)
     if csp_res == -1:
-        res[1] = -1
+        return -1
     else:
         change_csp_to_string = {}
         for role in csp_res:
             user = user_collection.find_one({'_id': ObjectId(csp_res[role])})
             user_title = user['Private Name'] + ' ' + user['Family Name']
             change_csp_to_string[role] = user_title
-        res[1] = change_csp_to_string
-
-def getRolesAndUsers(res, rolesAndUsers):
-    res[0] = rolesAndUsers
-
-def staffingMultyThreaded():
-    res = [None] * 2
-    rolesAndUsersList = getRolesAndFreeUsers()
-    rolesAndUsers = threading.Thread(target=getRolesAndUsers, args=(res, rolesAndUsersList))
-    csp = threading.Thread(target=cspAlgorithm, args=(res, rolesAndUsersList))
-    
-    rolesAndUsers.start()
-    csp.start()
-    
-    rolesAndUsers.join()
-    csp.join()
-    
-    return res
+        return change_csp_to_string
 
 
 # return all free roles and free users. list of dicts: [{'Role': roleDoc, 'User': [freeUsers]}]
@@ -384,10 +362,10 @@ def getRolesAndFreeUsers():
     threshold = now + datetime.timedelta(days=daysForThreshold)
     
     manning = manning_collection.find({})
-    
+    man_list = list(manning)
     userToDate = {}
     roleToDate = {}
-    for man_doc in manning:
+    for man_doc in man_list:
         addToUsers = False
         if man_doc['User ID'] in userToDate:
             if userToDate[man_doc['User ID']] < man_doc['Job end date']:
@@ -442,7 +420,17 @@ def getRolesAndFreeUsers():
             if 'orderedOptionalRoles' in user_doc:
                 user_doc.pop('orderedOptionalRoles')
             free_users_list += [user_doc]
+    
+    manning_dict = defaultdict(list)
+    for i in man_list:
+        manning_dict[i['User ID']].append(i['Role ID'])
         
+    cons_dict = {}
+    cons_list = list(constraints_collection.find({}))
+    for con in cons_list:
+        cons_dict[str(con['_id'])] = con
+        
+    
     for free_role in free_roles_list:
         free_users = []
         for user_doc in free_users_list:
@@ -457,11 +445,10 @@ def getRolesAndFreeUsers():
             roleEndDate = stringToDate(roleEndDateStr)
             if userEndDate - datetime.timedelta(days=90) < roleEndDate or roleEndDate < now:
                 if 'Constraints' in free_role:
-                    userManning = getHistory(user_doc['_id'])
-                    rolesIdList = list(map(lambda man: man['Role ID'], userManning))
+                    userManning = manning_dict[user_doc['_id']]
                     for conId in free_role['Constraints']:
-                        con = constraints_collection.find_one({'_id': ObjectId(conId)})
-                        if con['requirement'] not in rolesIdList:
+                        con = cons_dict[conId]
+                        if con['requirement'] not in userManning:
                             addUser = False
                             break
             else:
@@ -469,7 +456,7 @@ def getRolesAndFreeUsers():
             if addUser:
                 free_users += [dict(key=str(user_doc["_id"]),**user_doc)]
         data_staffingForm += [{"Role": free_role , "User": free_users}]
- 
+    
     return data_staffingForm
 
 
