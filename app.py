@@ -1,5 +1,4 @@
 from asyncio.log import logger
-from unicodedata import name
 from flask import Flask, request
 import flask
 import json
@@ -9,10 +8,12 @@ from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
 from werkzeug.exceptions import Unauthorized
-import ssl
 import datetime
 import logbook 
 import sys
+import CSPAlgorithm
+import threading
+from collections import defaultdict
 
 logger=logbook.Logger(__name__)
 
@@ -76,7 +77,6 @@ def register():
 
     # need to fix the check if user already exists in the table
     # check if user already exists in the table
-
     newUser = request.data
     userStr = newUser.decode("utf-8")
     newUserJson = json.loads(userStr)
@@ -144,7 +144,7 @@ def logout():
 def optional_roles(key):
     response = ""
     if request.method == "GET":
-        userRoles = manning_collection.find({"User ID":key})
+        userRoles = manning_collection.find({"User ID": key})
         
         # check if user has a manning
         if userRoles:
@@ -271,12 +271,10 @@ def manning():
         manning = {}
         for field in newManningJson:
             manning[field["key"]] = field["value"]
-
         print("addManning: ", manning)
         manning_collection.insert_one(manning)
         return response
 
-    
 
 @app.route("/api/selectedUserRole", methods=["POST"])
 @login_required
@@ -316,10 +314,12 @@ def selectedUserRole():
             print("user:", user)
             staffingsList += [{"User ID": user["User ID"], "Role ID": role["Role ID"],
                                "Date of staffing": str(dateOfStaffingOfCurrent), "Job end date": str(jobEndDateOfCurrent)}]
-    
-    manning_collection.insert_many(staffingsList)
-    print("added to manning: ", staffingsList)
-    response = jsonify({"success": "added into manning!"})
+    if len(staffingsList) > 0:
+        manning_collection.insert_many(staffingsList)
+        print("added to manning: ", staffingsList)
+        response = jsonify({"success": "added into manning!"})
+    else:
+        response = jsonify({"warning": "not found manning to add!"})
     return response
     
 def stringToDate(str):
@@ -333,27 +333,55 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-    
-    data_staffingForm = getFreeUsers()
-    response = flask.jsonify({"staffingForm": data_staffingForm})
+
+    data_staffingForm = getRolesAndFreeUsers()
+    change_csp_to_string = cspAlgorithm(data_staffingForm)
+    response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
 
 
-def getFreeUsers():
+def cspAlgorithm(rolesAndUsers):
+    csp_res = CSPAlgorithm.run_csp(rolesAndUsers)
+    if csp_res == -1:
+        return -1
+    else:
+        change_csp_to_string = {}
+        for role in csp_res:
+            user = user_collection.find_one({'_id': ObjectId(csp_res[role])})
+            user_title = user['Private Name'] + ' ' + user['Family Name']
+            change_csp_to_string[role] = user_title
+        return change_csp_to_string
+
+
+# return all free roles and free users. list of dicts: [{'Role': roleDoc, 'User': [freeUsers]}]
+def getRolesAndFreeUsers():
     data_staffingForm = []
-        
     daysForThreshold = 180 # take from user?    
     now = datetime.datetime.utcnow().astimezone()
     threshold = now + datetime.timedelta(days=daysForThreshold)
     
     manning = manning_collection.find({})
-    
+    man_list = list(manning)
     userToDate = {}
     roleToDate = {}
-    for man_doc in manning:
-        userToDate[man_doc['User ID']] = man_doc['Job end date']
-        roleToDate[man_doc['Role ID']] = man_doc['Job end date']
+    for man_doc in man_list:
+        addToUsers = False
+        if man_doc['User ID'] in userToDate:
+            if userToDate[man_doc['User ID']] < man_doc['Job end date']:
+                addToUsers = True
+        else:
+            addToUsers = True
+        addToRoles = False         
+        if man_doc['Role ID'] in roleToDate:
+            if roleToDate[man_doc['Role ID']] < man_doc['Job end date']:
+                addToRoles = True
+        else:
+            addToRoles = True
+        if addToUsers:
+            userToDate[man_doc['User ID']] = man_doc['Job end date']
+        if addToRoles:
+            roleToDate[man_doc['Role ID']] = man_doc['Job end date']
     
     roles = roles_collection.find({})
     freeRolesToEndDate = {}
@@ -364,34 +392,71 @@ def getFreeUsers():
         str_id_role = str(new_role_doc)
         role_doc["_id"] = str_id_role
         roleID = role_doc['_id']
-        endDateStr = roleToDate.get(roleID, str(now))
-        endDate = stringToDate(endDateStr)
-        if endDate < threshold:
-            freeRolesToEndDate[roleID] = endDate
+        roleEndDateStr = roleToDate.get(roleID, str(now))
+        roleEndDate = stringToDate(roleEndDateStr)
+        if roleEndDate < threshold:
+            freeRolesToEndDate[roleID] = roleEndDateStr
+            role_doc['endDate'] = roleEndDate
             free_roles_list += [role_doc]
     
     users = user_collection.find({})
     freeUsersToEndDate = {}
     free_users_list = []
+ 
     for user_doc in users:
         new_user_doc = user_doc.pop("_id")
         str_id_user = str(new_user_doc)
         user_doc["_id"] = str_id_user
         userID = user_doc['_id']
-        # Remove irrelevant fields from the document
-        user_doc.pop('password')   
-        if 'isAdmin' in user_doc:
-            user_doc.pop('isAdmin')
-        if 'orderedOptionalRoles' in user_doc:
-            user_doc.pop('orderedOptionalRoles')
-        endDateStr = userToDate.get(userID, str(now))
-        endDate = stringToDate(endDateStr)
-        if endDate < threshold:
-            freeUsersToEndDate[userID] = endDate
-            free_users_list += [dict(key=str(user_doc["_id"]),**user_doc)]
+        userEndDateStr = userToDate.get(userID, str(now))
+        userEndDate = stringToDate(userEndDateStr)
+        if userEndDate < threshold:
+            freeUsersToEndDate[userID] = userEndDateStr
+            user_doc['endDate'] = userEndDate
+            # Remove irrelevant fields from the document
+            user_doc.pop('password')
+            if 'isAdmin' in user_doc:
+                user_doc.pop('isAdmin')
+            if 'orderedOptionalRoles' in user_doc:
+                user_doc.pop('orderedOptionalRoles')
+            free_users_list += [user_doc]
+    
+    manning_dict = defaultdict(list)
+    for i in man_list:
+        manning_dict[i['User ID']].append(i['Role ID'])
+        
+    cons_dict = {}
+    cons_list = list(constraints_collection.find({}))
+    for con in cons_list:
+        cons_dict[str(con['_id'])] = con
+        
     
     for free_role in free_roles_list:
-        data_staffingForm += [{"Role":free_role , "User": free_users_list}]
+        free_users = []
+        for user_doc in free_users_list:
+            addUser = True
+            new_user_doc = user_doc.pop("_id")
+            str_id_user = str(new_user_doc)
+            user_doc["_id"] = str_id_user
+            userID = user_doc['_id']
+            userEndDateStr = userToDate.get(userID, str(now - datetime.timedelta(days=180)))
+            userEndDate = stringToDate(userEndDateStr)
+            roleEndDateStr = freeUsersToEndDate.get(free_role['_id'], str(now - datetime.timedelta(days=180)))
+            roleEndDate = stringToDate(roleEndDateStr)
+            if userEndDate - datetime.timedelta(days=90) < roleEndDate or roleEndDate < now:
+                if 'Constraints' in free_role:
+                    userManning = manning_dict[user_doc['_id']]
+                    for conId in free_role['Constraints']:
+                        con = cons_dict[conId]
+                        if con['requirement'] not in userManning:
+                            addUser = False
+                            break
+            else:
+                addUser = False
+            if addUser:
+                free_users += [dict(key=str(user_doc["_id"]),**user_doc)]
+        data_staffingForm += [{"Role": free_role , "User": free_users}]
+    
     return data_staffingForm
 
 
@@ -438,9 +503,13 @@ def role(key):
         roleStr = updatedRole.decode("utf-8")
         newRoleJson = json.loads(roleStr)
         print('newJsonRole: ', newRoleJson)
+        cons = []
+        if newRoleJson['Constraints'][0]:
+            for con in newRoleJson['Constraints']:
+                cons += [getConstraintID(con)]
         roles_collection.update_one({'_id': ObjectId(key)}, {'$set': {
             'Title': newRoleJson['Title'], 'Duration': newRoleJson['Duration'],
-            'Description': newRoleJson['Description']
+            'Description': newRoleJson['Description'], 'Constraints': cons
         }})
         found = roles_collection.find_one({'_id': ObjectId(key)})
         print('found: ', found)
@@ -457,7 +526,8 @@ def roles():
         raise Unauthorized()
     if request.method == "GET":
         data_roles = []
-        for doc in roles_collection.find({}, {}):
+        for doc in roles_collection.find({}):
+            doc['Constraints'] = getConstraintsNames(doc)
             data_roles +=[dict(key = str(doc.pop("_id")),**doc)]
 
         response = flask.jsonify({"roles": data_roles})
@@ -467,14 +537,72 @@ def roles():
         newRole = request.data
         roleStr = newRole.decode("utf-8")
         newRoleJson = json.loads(roleStr)
+        print('aaaaa: ', newRoleJson)
         role = {}
         for field in newRoleJson:
-            role[field["key"]] = field["value"]
+            if field["key"] == 'Constraints':
+                cons = []
+                if field['value'] != None:
+                    for con in field['value']:
+                        cons += [getConstraintID(con)]
+                role[field["key"]] = cons
+            else:
+                role[field["key"]] = field["value"]
 
         print(role)
-        roles_collection.insert_one(role)
+        res = roles_collection.insert_one(role)
+        constraint = {'type': "TrainingRequired", 'requirement': str(res.inserted_id)}
+        constraints_collection.insert_one(constraint)
 
     return response
+
+@app.route("/api/constraints", methods=["GET", "POST"])
+@login_required
+def constraints():
+    response = ""
+    isAdmin = check_athority()
+    if not isAdmin:
+        raise Unauthorized()
+    if request.method == "GET":
+        data_cons = []
+        for doc in constraints_collection.find({}):
+            doc['role_title'] = getRoleTitle(doc['requirement'])
+            data_cons +=[dict(key = str(doc.pop("_id")),**doc)]
+
+        response = flask.jsonify({"cons": data_cons})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+
+    else:
+        newCon = request.data
+        conStr = newCon.decode("utf-8")
+        newConJson = json.loads(conStr)
+        con = {}
+        for field in newConJson:
+            con[field["key"]] = field["value"]
+
+        print(con)
+        constraints_collection.insert_one(con)
+
+    return response
+
+def getRoleTitle(roleId):
+    return roles_collection.find_one({'_id': ObjectId(roleId)})['Title']
+    
+
+def getConstraintsNames(role):
+    if 'Constraints' in role:
+        cons = role['Constraints']
+        cons_names = []
+        for con in cons:
+            con_doc = constraints_collection.find_one({'_id': ObjectId(con)})
+            role = roles_collection.find_one({'_id': ObjectId(con_doc['requirement'])})
+            cons_names += [role['Title']]
+        return cons_names
+
+def getConstraintID(role_title):
+    role_doc = roles_collection.find_one({'Title': role_title})
+    con = constraints_collection.find_one({'requirement': str(role_doc['_id'])})
+    return str(con['_id'])
 
 #smile
 @app.route("/api/users/<key>/smile", methods=["GET", "POST"])
@@ -530,14 +658,6 @@ def users():
     else:
         
     # need to fix the check if user already exists in the table
-        #  user = request.data
-        # found = user_collection.find_one({"user_name": user[0].user_name}, {"_id": 0})
-        
-        # if found:
-        #     return jsonify(
-        #         {"status": 401, "reason": "Username already exist. Try another user name."})
-        # else:
-
         newUser = request.data
         userStr = newUser.decode("utf-8")
         newUserJson = json.loads(userStr)
@@ -554,9 +674,7 @@ def users():
 @app.get("/api/rolesHistory/<key>")
 @login_required
 def getRolesHistory(key):
-    rolesHistory = manning_collection.find({'User ID': key})
-    if rolesHistory:
-       sortedRolesHistory = getHistory(key)
+    sortedRolesHistory = getHistory(key)
     print('rolesHistory: ', sortedRolesHistory)
     return flask.jsonify({"rolesHistory": sortedRolesHistory})
 
@@ -578,8 +696,8 @@ def getHistory(key):
             job_end_date_format = job_end_date.strftime("%d/%m/%Y")
             role["Job end date"] = job_end_date_format
         addRolesTitle(sortedRolesHistory)
-    return sortedRolesHistory
-    
+        return sortedRolesHistory
+    return rolesHistory
 
 def addRolesTitle(rolesHistory):
     for role in rolesHistory:
