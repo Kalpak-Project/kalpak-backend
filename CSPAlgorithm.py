@@ -1,4 +1,5 @@
 import copy
+import datetime
 from Domain import Domain
 from RoleVar import RoleVar
 from Constraint import *
@@ -17,7 +18,6 @@ class csp:
         # self.score = 0
     
     def getRemovedIrrelevantFields(self):
-        # TODO fix this
         users = []
         for role in self.freeUsersAndRoles:
             users += role['User']
@@ -75,7 +75,6 @@ class csp:
         for val in dom:
             if self.checkConsistency(assignments, var, val):
                 assignments[var] = val
-                print("assignment: ", assignments)
                 self.updateDomains(val)
                 res = self.backtracking(assignments)
                 if res != -1:
@@ -88,6 +87,9 @@ class csp:
     def getUnassignedVar(self, assignments):
         unassignedVars = list(filter(lambda x: x not in assignments, self.vars))
         sortedDomain = self.sortByMRV(unassignedVars)
+        biggerDomain = list(filter(lambda x: len(self.vars[x].domain.domain) == len(self.vars[sortedDomain[0]].domain.domain), sortedDomain))
+        if len(biggerDomain) > 1:
+            return self.sortByDegree(biggerDomain)[0]
         return sortedDomain[0]
 
     # Sort the array of characters received according to the heuristic 'minimum remaining values'
@@ -95,6 +97,17 @@ class csp:
         sortedDomains = sorted(unassignedVars, key=lambda x: len(self.vars[x].domain.domain))
         return sortedDomains
     
+    # Sort the array of characters received according to 'degree heuristic'
+    def sortByDegree(self, biggers):
+        vars = list(map(lambda x: self.vars[x].var, biggers))
+        consNum = {var['_id']: self.getConsNum(var) for var in sorted(vars, key=lambda var: self.getConsNum(var))}
+        return list(consNum.keys())
+    
+    # get var and returns the number of constraints in which the variable is involved
+    def getConsNum(self, var):
+        if 'Constraints' in var:
+            return len(var['Constraints'])
+        return 0
         
     # Check whether the new assignment satisfies all the constraints
     def checkConsistency(self, ass, newVar, newValue):
@@ -120,15 +133,17 @@ class csp:
     
 
 def run_csp(rolesAndUsers):
+    # check
+    start = datetime.datetime.now()
     csp_solver = csp(rolesAndUsers)
-    return csp_solver.backtracking(csp_solver.currentAssignment)
-
-# aaa = csp()
-# result = aaa.backtracking(aaa.currentAssignment)
-# bbb = []
-# for attr in result:
-#     bbb += [(attr, result[attr])]
-# ccc = list(map(lambda ass: {aaa.vars[ass[0]].var['Title']: ass[1]}, bbb))
-# print(ccc)  
+    end = datetime.datetime.now()
+    print("time for constructor: ", end - start)
+    # check
+    start = datetime.datetime.now()
+    res = csp_solver.backtracking(csp_solver.currentAssignment)
+    end = datetime.datetime.now()
+    print("time for backtracking: ", end - start)
+    return res
+ 
 
         

@@ -333,9 +333,10 @@ def staffingForm():
     if not isAdmin:
         raise Unauthorized()
     response = ""
-
+    
     data_staffingForm = getRolesAndFreeUsers()
     change_csp_to_string = cspAlgorithm(data_staffingForm)
+
     response = flask.jsonify({"staffingForm": data_staffingForm, "cspRes": change_csp_to_string})
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response
