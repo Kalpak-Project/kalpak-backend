@@ -1,10 +1,10 @@
 # kalpak-backend
 
 required libraries:
-flask
-pymongo
-werkzeug
-datetime
+flask.
+pymongo.
+werkzeug.
+datetime.
 
 We may have forgotten some additional libraries.
 If there are additional libraries that are missing - when you try to run,
